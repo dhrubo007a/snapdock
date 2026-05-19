@@ -129,5 +129,4 @@ WIP
 
 ## Questions?
 
-Open an issue with the `question` label or reach out via
-[dhruboalok0@gmail.com](mailto:dhruboalok0@gmail.com).
+Open an issue with the `question` label..
