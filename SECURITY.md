@@ -59,9 +59,10 @@ Losing the encryption key means losing access to all encrypted snapshot data —
 there is no key recovery mechanism by design.
 
 ### Docker socket
-The Docker socket (`/var/run/docker.sock`) is mounted **read-only** for
-container and stack classification. Volume I/O operations use temporary Alpine
-sidecar containers and do not require host root access.
+The Docker socket (`/var/run/docker.sock`) is mounted with full access. It is
+required for container lifecycle operations (stop, start, create, remove) and
+volume management in addition to stack classification. Volume I/O uses
+temporary Alpine sidecar containers and does not require host root access.
 
 ### Authentication
 All API endpoints require authentication via JWT (short-lived, HS256 signed)
