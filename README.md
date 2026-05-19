@@ -198,7 +198,7 @@ chunked mode before it touches disk:
 - **Key ID**: The manifest records only a key identifier — never the key itself.
 - **Per-file encryption**: Each snapshot file is encrypted independently;
   a corrupted file affects only that file, not the entire snapshot.
-- **No key, no data**: Losing `snapdock.env` means losing access to all
+- **No key, no data**: Losing `.env` (specifically `SNAPDOCK_ENCRYPTION_KEY`) means losing access to all
   encrypted snapshots. Back it up. Separately. Somewhere safe.
 
 ---
@@ -398,7 +398,7 @@ their exit codes, making them fully auditable.
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│  Web UI  (React/Vite/Tailwind)  :3000                        │
+│  Web UI  (React/Vite/Tailwind)  :9001                        │
 │  CLI     (Click/Rich)                                        │
 └───────────────────────┬──────────────────────────────────────┘
                         │ HTTP / WebSocket
@@ -434,17 +434,19 @@ python -c "import os,base64; print(base64.urlsafe_b64encode(os.urandom(32)).deco
 python -c "import secrets; print(secrets.token_hex(32))"
 ```
 
-### 2. Create `backend/snapdock.env`
+### 2. Create `.env`
 
 ```bash
-cp backend/snapdock.env.example backend/snapdock.env
+cp .env.example .env
 ```
 
-Edit it and fill in the two generated values:
+Edit it and fill in the generated values:
 
 ```env
 SNAPDOCK_ENCRYPTION_KEY=<output from step 1>
 SNAPDOCK_JWT_SECRET=<output from step 2>
+POSTGRES_PASSWORD=<a strong password>
+SNAPDOCK_DATABASE_URL=postgresql+psycopg2://snapdock:<a strong password>@db:5432/snapdock
 ```
 
 ### 3. Start the stack
@@ -472,10 +474,11 @@ A default admin account is created on first startup:
 
 ```
 SnapDock/
+├── .env.example                    ← copy to .env for docker-compose setup
 ├── backend/
 │   ├── Dockerfile
 │   ├── requirements.txt
-│   ├── snapdock.env.example        ← copy to snapdock.env and fill in
+│   ├── snapdock.env.example        ← copy to snapdock.env for local dev (non-Docker)
 │   └── snapdock/
 │       ├── main.py                 ← FastAPI app, lifespan, all routers
 │       ├── config.py               ← Pydantic-settings
@@ -534,7 +537,7 @@ docker compose up -d
 
 ## Security Notes
 
-- `backend/snapdock.env` contains your AES-256 key and JWT secret. It is
+- `.env` (root) contains your AES-256 key and JWT secret. It is
   `.gitignore`d. **Back it up separately and securely.** Losing it means
   losing access to all encrypted snapshots permanently — there is no recovery
   mechanism.
