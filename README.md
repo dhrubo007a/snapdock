@@ -23,7 +23,7 @@
 ---
 
 > [!WARNING]
-> **Hobby project — under active development.** SnapDock is built and maintained in spare time as a personal homelab tool. It may have rough edges, incomplete features, and breaking changes between versions (no semver guarantees yet). Please test all features to see if they work properly for you before deploying to production. You have been warned. Don't kill this poor dev later for any data loss.
+> **Hobby project: under active development.** SnapDock is built and maintained in spare time as a personal homelab tool. It may have rough edges, incomplete features, and breaking changes between versions (no semver guarantees yet). Please test all features to see if they work properly for you before deploying to production. You have been warned. Don't kill this poor dev later for any data loss.
 
 ---
 
@@ -41,7 +41,7 @@ It's not a backup tool that archives your files. It's not a Kubernetes operator.
 It's a daemon that sits next to your Docker socket, watches your stacks, and
 makes the kind of confidence-inspiring "I can always roll back" experience
 available to everyone running containers on bare metal, a homelab server, or a
-small VPS — not just teams with enterprise budgets.
+small VPS, not just teams with enterprise budgets.
 
 **Who is it for?**
 - Homelab enthusiasts who self-host a dozen compose stacks and live in fear of
@@ -62,14 +62,14 @@ runs `docker compose config` to resolve multi-file compose setups with full
 variable substitution, and builds a live map of your environment.
 
 It then goes further: it analyses shared networks and named volumes to detect
-**interconnected service groups** — containers that aren't part of the same
-compose project but are effectively coupled at runtime. These get surfaced as
+**interconnected service groups** (containers that aren't part of the same
+compose project but are effectively coupled at runtime). These get surfaced as
 logical groups in the UI so you can snapshot them together or manage them
 separately.
 
 The result: you open the dashboard and your entire Docker environment is already
 organised into stacks, with health indicators, container counts, last-snapshot
-timestamps, and schedule status — no config files to write, no agents to install
+timestamps, and schedule status; no config files to write, no agents to install
 per-stack.
 
 ---
@@ -94,7 +94,7 @@ orchestration sequence that treats correctness as a hard constraint:
 | 11 | Pending restart flag | Written to daemon state to survive crashes during the critical window |
 | 12 | Stack stop | Graceful shutdown in reverse dependency order |
 | 13 | Volume capture | All persistent data archived via Alpine sidecar |
-| 14 | Volume I/O | Sidecar containers handle tar extraction — no host root required |
+| 14 | Volume I/O | Sidecar containers handle tar extraction; no host root required |
 | 15 | Config layer save | Compose files, env files, image digests, networks, and startup order preserved |
 | 16 | Encryption | AES-256-GCM chunked encryption applied to all snapshot data |
 | 17 | Storage write | Encrypted snapshot written to `/var/lib/snapdock/snapshots/` |
@@ -115,18 +115,18 @@ ensures restart policies are always restored even if the daemon crashes mid-way.
 
 ### Database-Aware Quiescing
 
-The moment most backup tools skip — and the one that matters most — is making
+The moment most backup tools skip (and the one that matters most) is making
 sure your database has actually flushed to disk before you freeze its volume.
 SnapDock handles this per database type, using `docker exec` into the running
 container:
 
 | Database | Quiesce method |
 |---|---|
-| **PostgreSQL** | `CHECKPOINT` — forces all dirty pages to disk |
-| **MySQL / MariaDB** | `FLUSH TABLES WITH READ LOCK` — consistent snapshot point |
-| **Redis** | `BGSAVE` + wait for completion — persists the in-memory dataset |
-| **MongoDB** | `db.fsyncLock()` — flushes and locks the journal |
-| **Generic** | `SIGTERM` + configurable wait — graceful for anything else |
+| **PostgreSQL** | `CHECKPOINT`: forces all dirty pages to disk |
+| **MySQL / MariaDB** | `FLUSH TABLES WITH READ LOCK`: consistent snapshot point |
+| **Redis** | `BGSAVE` + wait for completion: persists the in-memory dataset |
+| **MongoDB** | `db.fsyncLock()`: flushes and locks the journal |
+| **Generic** | `SIGTERM` + configurable wait: graceful for anything else |
 
 Database type is auto-detected from the container image name. No configuration
 required for standard images. For custom images, the quiesce method can be
@@ -149,14 +149,14 @@ committing**, and **never leave the stack in a worse state than it started**.
 
 **Dry-run mode** spins up an isolated copy of the stack under a suffixed project
 name, restores the snapshot data into it, runs health checks, and reports
-whether the restore is viable — all without touching your live stack or data.
+whether the restore is viable, all without touching your live stack or data.
 Containers bind to **ephemeral host ports** chosen automatically by Docker,
 so there are no conflicts with the running live stack. Once the dry-run
 completes, the UI surfaces clickable **preview URLs** for every exposed service
 port so you can actually browse the restored stack before committing.
 It's a full end-to-end verification that the snapshot is intact, the encryption
 keys are valid, and the containers come up healthy. The isolated environment is
-torndown automatically after inspection.
+torn down automatically after inspection.
 
 **Full restore** requires explicit confirmation. The UI calculates and displays
 the exact data loss window: *"Data changed since snapshot was finalized (approx
@@ -164,7 +164,9 @@ the exact data loss window: *"Data changed since snapshot was finalized (approx
 
 The restore sequence mirrors the snapshot sequence: manifest lookup → volume
 teardown → Alpine sidecar restore → config reconstruction → stack start →
-health verify → audit log. Restart policy restoration is wrapped in a critical
+health verify → audit log. For solo containers where no stopped instance
+exists, the engine reconstructs them from the `docker inspect` diagnostics
+captured at snapshot time. Restart policy restoration is wrapped in a critical
 section that runs even on failure, so the stack is never left with `--restart=no`
 set permanently.
 
@@ -172,7 +174,7 @@ set permanently.
 
 ### Volume I/O via Alpine Sidecar
 
-All volume operations — both capture and restore — are handled by temporary
+All volume operations (both capture and restore) are handled by temporary
 Alpine 3.19 sidecar containers spun up by the daemon at runtime:
 
 - **No host root required.** The daemon user doesn't need to mount the host
@@ -202,7 +204,7 @@ chunked mode before it touches disk:
   ```bash
   python -c "import os,base64; print(base64.urlsafe_b64encode(os.urandom(32)).decode())"
   ```
-- **Key ID**: The manifest records only a key identifier — never the key itself.
+- **Key ID**: The manifest records only a key identifier, never the key itself.
 - **Per-file encryption**: Each snapshot file is encrypted independently;
   a corrupted file affects only that file, not the entire snapshot.
 - **No key, no data**: Losing `.env` (specifically `SNAPDOCK_ENCRYPTION_KEY`) means losing access to all
@@ -253,8 +255,8 @@ Three roles, cleanly separated:
 | **admin** | Full access: restore, user management, API key management, settings, audit log export. |
 
 Authentication supports two methods:
-- **JWT tokens** — short-lived, HS256 signed, used by the web UI
-- **API keys** — long-lived, bcrypt-hashed, `X-Api-Key` header, used by the CLI
+- **JWT tokens**: short-lived, HS256 signed, used by the web UI
+- **API keys**: long-lived, bcrypt-hashed, `X-Api-Key` header, used by the CLI
   and CI/CD pipelines. Each key inherits the role of the user it was issued to.
 
 Account lockout activates after 5 consecutive failed login attempts (15-minute
@@ -269,34 +271,35 @@ the daemon via both REST API and a WebSocket event stream, so every snapshot
 progress update, health state change, and scheduler event appears in real time
 without polling.
 
-**Dashboard** — At a glance: total stacks, healthy count, issue count, scheduled
+**Dashboard**: At a glance: total stacks, healthy count, issue count, scheduled
 count. Stacks are grouped by health state (CLEAN / DEGRADED / BROKEN) with
 per-stack last-snapshot timestamps and quick-action buttons. Stacks that share
-user-defined networks or named volumes with another compose project are
-automatically annotated with **cross-project coupling badges** so you know which
-stacks need to be snapshotted together for a consistent restore.
+user-defined networks or named volumes with any other stack are automatically
+annotated with **cross-project coupling badges** so you know which stacks need
+to be snapshotted together for a consistent restore.
 
-**Snapshot History** — Per-stack timeline of all snapshots. State badges,
+**Snapshot History**: Per-stack timeline of all snapshots. State badges,
 container statuses, timestamps, lock indicators, and one-click actions for
 snapshot, restore, dry-run, lock, export, and delete. Each row has an inline
 **diff panel** that compares image versions, config changes, and volume size
 delta against the previous snapshot.
 
-**Snapshot Inspector** — Deep-dive into a single snapshot: **Services table**
-(per-service image, quiesce method + outcome, pre/post hook outcomes), **Volume
-Inventory** (name, type, mount path, captured size), **Diagnostics Capture**
-(log file list, inspect files), and a collapsible raw manifest JSON view.
+**Snapshot Inspector**: Deep-dive into a single snapshot: **Services table**
+(per-service image, exposed ports, quiesce method + outcome, pre/post hook
+outcomes), **Volume Inventory** (name, type, mount path, captured size),
+**Diagnostics Capture** (log file list, inspect files), and a collapsible raw
+manifest JSON view.
 
-**Audit Log** — Admin-only chronological log of every state-changing action:
+**Audit Log**: Admin-only chronological log of every state-changing action:
 snapshots taken, restores run, schedules changed, users created, API keys issued,
 snapshots deleted. Filterable by stack name and paginated. Full CSV export for
 compliance records.
 
-**Coverage Dashboard** — Compliance view: which stacks have a recent snapshot
+**Coverage Dashboard**: Compliance view: which stacks have a recent snapshot
 (Protected), which are overdue, and which have never been snapshotted
 (Unprotected). Gives you the "snapshot hygiene" picture at a glance.
 
-**Settings** — API key generation (shown once, copy it), API key revocation,
+**Settings**: API key generation (shown once, copy it), API key revocation,
 password change, webhook configuration, and admin-level global configuration
 including per-service quiesce method overrides.
 
@@ -365,11 +368,11 @@ be able to answer instantly: *"Which of my stacks don't have a recent snapshot?"
 
 Stacks are classified into three states:
 
-- **Protected** — Has at least one snapshot within the configured freshness
+- **Protected**: Has at least one snapshot within the configured freshness
   window. Green.
-- **Overdue** — Has snapshots, but the most recent one is older than the
+- **Overdue**: Has snapshots, but the most recent one is older than the
   freshness threshold. Yellow.
-- **Unprotected** — No snapshots at all. Red.
+- **Unprotected**: No snapshots at all. Red.
 
 Each row shows the stack name, last snapshot timestamp, days since last snapshot,
 and compliance status. The page is designed to be the first thing you check after
@@ -379,8 +382,8 @@ making infrastructure changes.
 
 ### Audit Log & CSV Export
 
-Every action that modifies state — snapshots taken, restores run, schedules
-changed, users created, API keys issued, snapshots deleted — is recorded to an
+Every action that modifies state (snapshots taken, restores run, schedules
+changed, users created, API keys issued, snapshots deleted) is recorded to an
 append-only audit log with actor, timestamp, action type, target, outcome, and
 IP address. The full log is queryable and filterable in the UI (admin only) and
 can be exported as CSV for compliance records or incident post-mortems.
@@ -390,7 +393,7 @@ can be exported as CSV for compliance records or incident post-mortems.
 ### Webhook Notifications
 
 SnapDock can POST a JSON payload to any HTTP endpoint after snapshot and restore
-events — Slack, Teams, or any custom webhook. Webhooks are configured in
+events: Slack, Teams, or any custom webhook. Webhooks are configured in
 Settings and include the snapshot ID, stack name, outcome, and trigger type
 (scheduled / manual / API).
 
@@ -401,9 +404,9 @@ Settings and include the snapshot ID, stack name, outcome, and trigger type
 Run arbitrary bash commands inside any service container at the right moment in
 the orchestration sequence:
 
-- **Pre-snapshot hooks** — run after quiescing and before the stack stops. Ideal
+- **Pre-snapshot hooks**: run after quiescing and before the stack stops. Ideal
   for application-level checkpointing, flushing caches, or closing file handles.
-- **Post-snapshot hooks** — run after the stack restarts. Ideal for re-enabling
+- **Post-snapshot hooks**: run after the stack restarts. Ideal for re-enabling
   write operations, warming caches, or sending internal notifications.
 
 Hooks are configured per-service and stored in the snapshot manifest alongside
@@ -541,7 +544,7 @@ python -m snapdock.main
 ```bash
 cd frontend
 npm install
-npm run dev    # http://localhost:3000 — proxied to backend on :8000
+npm run dev    # http://localhost:3000 (proxied to backend on :8000)
 ```
 
 ### Full stack
@@ -556,10 +559,10 @@ docker compose up -d
 
 - `.env` (root) contains your AES-256 key and JWT secret. It is
   `.gitignore`d. **Back it up separately and securely.** Losing it means
-  losing access to all encrypted snapshots permanently — there is no recovery
+  losing access to all encrypted snapshots permanently; there is no recovery
   mechanism.
 - The Docker socket is mounted **read-only** for classification. Volume I/O
-  uses temporary Alpine sidecar containers — no host root access required.
+  uses temporary Alpine sidecar containers; no host root access required.
 - All API endpoints require authentication (JWT or API key).
 - Restore operations are restricted to the `admin` role by default.
 - Account lockout activates after 5 consecutive failed login attempts.
@@ -575,7 +578,7 @@ a user password.
 
 ### 1. Create an API key
 
-In the UI go to **Settings → API Keys → Generate**. Copy the key — it is shown
+In the UI go to **Settings → API Keys → Generate**. Copy the key; it is shown
 once. Store it as a secret in your CI/CD system:
 
 ```bash
