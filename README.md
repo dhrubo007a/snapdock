@@ -22,21 +22,20 @@
 
 ---
 
+> [!WARNING]
+> **Hobby project — under active development.** SnapDock is built and maintained in spare time as a personal homelab tool. It may have rough edges, incomplete features, and breaking changes between versions (no semver guarantees yet). Do not rely on it as your sole backup strategy for anything you cannot afford to lose. Test restores. Verify encryption keys are backed up. You have been warned — and the author takes no responsibility for data loss.
+
+---
+
 ## What is SnapDock?
 
-You know that feeling when a deployment goes sideways at 2 AM, your app is in
-an undefined state, the database has half-migrated, and you're staring at logs
-wondering if a rollback will make things better or catastrophically worse?
-
-SnapDock was built for that moment.
-
-It's a self-hosted Docker state management daemon that takes **full, consistent,
-point-in-time snapshots** of your running stacks — containers, volumes, config,
-and all — and lets you restore them back to exactly that state with a single
-click or a single CLI command. Think of it as Time Machine for your Docker
-environment, except it also quiesces your databases before it touches anything,
-encrypts everything at rest, and gives you a dry-run mode to verify the restore
-won't make things worse before you commit to it.
+Say hello to SnapDock, a vibe-coded mess of a self-hosted Docker state management
+daemon that takes **full, consistent, point-in-time snapshots** of your running
+stacks, containers, volumes, config, and all and lets you restore them back to
+exactly that state with a single click or a single CLI command. Think of it as
+Time Machine for your Docker environment, except it also quiesces your databases
+before it touches anything, encrypts everything at rest, and gives you a dry-run
+mode to verify the restore won't make things worse before you commit to it.
 
 It's not a backup tool that archives your files. It's not a Kubernetes operator.
 It's a daemon that sits next to your Docker socket, watches your stacks, and
@@ -46,11 +45,10 @@ small VPS — not just teams with enterprise budgets.
 
 **Who is it for?**
 - Homelab enthusiasts who self-host a dozen compose stacks and live in fear of
-  botching an upgrade
-- Developers who want a pre-deploy safety net before pushing to a staging server
+  botching an upgrade.
+- Developers who want a pre-deploy safety net before pushing to a staging server.
 - Small teams who need snapshot automation, RBAC, and audit trails without a
-  six-figure observability contract
-- Anyone who has ever typed `docker compose down -v` and immediately regretted it
+  six-figure observability contract.
 
 ---
 
@@ -298,7 +296,7 @@ cd cli && pip install -e .
 Configure via environment variables:
 
 ```bash
-export SNAPDOCK_URL=http://your-server:8050
+export SNAPDOCK_URL=http://your-server:9000
 export SNAPDOCK_API_KEY=sdck_...
 ```
 
@@ -456,9 +454,9 @@ docker compose up -d
 
 | Service | URL |
 |---|---|
-| Web UI | http://localhost:3000 |
-| Daemon API | http://localhost:8000 |
-| API docs (Swagger) | http://localhost:8000/docs |
+| Web UI | http://localhost:9001 |
+| Daemon API | http://localhost:9000 |
+| API docs (Swagger) | http://localhost:9000/docs |
 
 A default admin account is created on first startup:
 
@@ -522,7 +520,7 @@ python -m snapdock.main
 ```bash
 cd frontend
 npm install
-npm run dev    # http://localhost:3000 — proxied to :8000
+npm run dev    # http://localhost:3000 — proxied to backend on :8000
 ```
 
 ### Full stack
@@ -545,6 +543,158 @@ docker compose up -d
 - Restore operations are restricted to the `admin` role by default.
 - Account lockout activates after 5 consecutive failed login attempts.
 - To report a security vulnerability privately, see [SECURITY.md](SECURITY.md).
+
+---
+
+## CI/CD Integration
+
+SnapDock is designed to slot into any CI/CD pipeline. The recommended approach
+is an **API key** with `operator` or `admin` role, so the pipeline never needs
+a user password.
+
+### 1. Create an API key
+
+In the UI go to **Settings → API Keys → Generate**. Copy the key — it is shown
+once. Store it as a secret in your CI/CD system:
+
+```bash
+# GitHub Actions secret:  SNAPDOCK_API_KEY
+# GitLab CI variable:     SNAPDOCK_API_KEY
+# Jenkins credential:     snapdock-api-key (Secret text)
+```
+
+### 2. Direct REST API (curl)
+
+All endpoints are under `http://<host>:9000`. Authenticate with
+`X-Api-Key: <key>` or `Authorization: Bearer <jwt>`.
+
+```bash
+SNAPDOCK=http://your-server:9000
+KEY=sdck_...
+
+# Trigger a snapshot
+curl -s -X POST "$SNAPDOCK/stacks/myapp/snapshots" \
+  -H "X-Api-Key: $KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"label": "pre-deploy"}'
+
+# Get the latest snapshot ID
+SNAP_ID=$(curl -s "$SNAPDOCK/stacks/myapp/snapshots?limit=1" \
+  -H "X-Api-Key: $KEY" | jq -r '.[0].id')
+
+# Dry-run restore to verify snapshot integrity
+curl -s -X POST "$SNAPDOCK/stacks/myapp/snapshots/$SNAP_ID/restore" \
+  -H "X-Api-Key: $KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"dry_run": true, "confirmed": false}'
+
+# Full restore (requires admin key)
+curl -s -X POST "$SNAPDOCK/stacks/myapp/snapshots/$SNAP_ID/restore" \
+  -H "X-Api-Key: $KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"confirmed": true, "dry_run": false}'
+
+# Lock a snapshot so retention can't prune it
+curl -s -X PATCH "$SNAPDOCK/stacks/myapp/snapshots/$SNAP_ID/lock" \
+  -H "X-Api-Key: $KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"locked": true}'
+```
+
+Full interactive API reference: `http://your-server:9000/docs`
+
+### 3. CLI (recommended for scripts)
+
+The CLI wraps all of the above and is easier to read in pipeline YAML:
+
+```bash
+pip install -e ./cli
+export SNAPDOCK_URL=http://your-server:9000
+export SNAPDOCK_API_KEY=sdck_...
+```
+
+### 4. GitHub Actions
+
+```yaml
+# .github/workflows/deploy.yml
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install SnapDock CLI
+        run: pip install -e ./cli
+
+      - name: Snapshot before deploy
+        env:
+          SNAPDOCK_URL: ${{ secrets.SNAPDOCK_URL }}
+          SNAPDOCK_API_KEY: ${{ secrets.SNAPDOCK_API_KEY }}
+        run: |
+          SNAP=$(snapdock snapshot myapp --label "pre-deploy-${{ github.sha }}")
+          echo "SNAP_ID=$SNAP" >> $GITHUB_ENV
+
+      - name: Deploy
+        run: ./deploy.sh
+
+      - name: Rollback on failure
+        if: failure()
+        env:
+          SNAPDOCK_URL: ${{ secrets.SNAPDOCK_URL }}
+          SNAPDOCK_API_KEY: ${{ secrets.SNAPDOCK_API_KEY }}
+        run: snapdock restore myapp --snapshot "$SNAP_ID" --confirm
+```
+
+### 5. GitLab CI
+
+```yaml
+# .gitlab-ci.yml
+deploy:
+  stage: deploy
+  before_script:
+    - pip install -e ./cli
+  script:
+    - export SNAP=$(snapdock snapshot myapp --label "pre-deploy-$CI_COMMIT_SHORT_SHA")
+    - ./deploy.sh
+  after_script:
+    - |
+      if [ "$CI_JOB_STATUS" != "success" ]; then
+        snapdock restore myapp --snapshot "$SNAP" --confirm
+      fi
+  variables:
+    SNAPDOCK_URL: $SNAPDOCK_URL        # set in GitLab CI/CD variables
+    SNAPDOCK_API_KEY: $SNAPDOCK_API_KEY
+```
+
+### 6. Jenkins
+
+```groovy
+// Jenkinsfile
+pipeline {
+    agent any
+    environment {
+        SNAPDOCK_URL     = credentials('snapdock-url')
+        SNAPDOCK_API_KEY = credentials('snapdock-api-key')
+    }
+    stages {
+        stage('Snapshot') {
+            steps {
+                sh 'pip install -e ./cli'
+                sh 'snapdock snapshot myapp --label "pre-deploy-${GIT_COMMIT[0..7]}"'
+                script { env.SNAP_ID = sh(script: 'snapdock latest myapp', returnStdout: true).trim() }
+            }
+        }
+        stage('Deploy') {
+            steps { sh './deploy.sh' }
+        }
+    }
+    post {
+        failure {
+            sh 'snapdock restore myapp --snapshot "${SNAP_ID}" --confirm'
+        }
+    }
+}
+```
 
 ---
 

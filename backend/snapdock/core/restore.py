@@ -18,6 +18,7 @@ import shutil
 import subprocess
 import tarfile
 import tempfile
+import yaml
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -203,10 +204,10 @@ class RestoreEngine:
             # Step 11: Start stack
             await self._emit(snap_id, stack_name, "restore.step", "Starting stack…", "running")
             compose_workdir = await asyncio.to_thread(
-                self._prepare_compose_workdir, manifest, snapshot_dir, key
+                self._prepare_compose_workdir, manifest, snapshot_dir, key, dry_run
             )
             await asyncio.to_thread(
-                self._start_stack_from_manifest, manifest, restore_suffix, compose_workdir
+                self._start_stack_from_manifest, manifest, restore_suffix, compose_workdir, dry_run
             )
 
             success = True
@@ -236,8 +237,10 @@ class RestoreEngine:
             # accumulate.  On success it is kept intentionally: container
             # labels written by `docker compose up` point to this stable path
             # so the classifier can re-read the compose files at any time.
-            if not success and compose_workdir and compose_workdir.exists():
-                shutil.rmtree(compose_workdir, ignore_errors=True)
+            # For dry-run the workdir is always a temp dir — always clean it.
+            if compose_workdir and compose_workdir.exists():
+                if not success or dry_run:
+                    shutil.rmtree(compose_workdir, ignore_errors=True)
 
         if not success:
             return False
@@ -538,6 +541,7 @@ class RestoreEngine:
         manifest: Manifest,
         snapshot_dir: Path,
         key: bytes,
+        dry_run: bool = False,
     ) -> "Path | None":
         """Decrypt saved compose/env files to a stable working directory.
 
@@ -547,6 +551,9 @@ class RestoreEngine:
         containers by ``docker compose up`` continues to point to a valid
         directory after the restore completes.  Returns *None* if the snapshot
         contains no saved config files.
+
+        For dry-run restores a temporary directory is used so the live
+        stack's stable compose workdir is not overwritten.
         """
         if not manifest.config.compose_files:
             return None
@@ -555,10 +562,15 @@ class RestoreEngine:
         if not config_dir.exists():
             return None
 
-        # Stable, persistent path on the named snapshots volume so container
-        # labels remain valid and the classifier can re-read compose files.
-        stable_dir = self._settings.storage_path / ".stacks" / manifest.stack.name
-        stable_dir.mkdir(parents=True, exist_ok=True)
+        if dry_run:
+            # Temp dir for dry-run: avoids overwriting the live stack's stable
+            # compose workdir; cleaned up in run()'s finally block.
+            stable_dir = Path(tempfile.mkdtemp(prefix=f"sd_dryrun_{manifest.stack.name}_"))
+        else:
+            # Stable, persistent path on the named snapshots volume so container
+            # labels remain valid and the classifier can re-read compose files.
+            stable_dir = self._settings.storage_path / ".stacks" / manifest.stack.name
+            stable_dir.mkdir(parents=True, exist_ok=True)
         any_extracted = False
 
         for filename in manifest.config.compose_files + manifest.config.env_files:
@@ -587,6 +599,7 @@ class RestoreEngine:
         manifest: Manifest,
         restore_suffix: str,
         compose_workdir: "Path | None" = None,
+        dry_run: bool = False,
     ) -> None:
         """Start containers using their original images in startup_order.
 
@@ -602,11 +615,23 @@ class RestoreEngine:
            inaccessible).
         4. Emit a warning and return without raising — the volume data has been
            restored; the user can start the stack manually.
+
+        For dry-run restores a suffixed ``--project-name`` isolates the
+        temporary stack, and a compose override that clears all port bindings
+        prevents conflicts with the running live stack.  Strategy 3 (SDK
+        container.start()) is skipped for dry-run.
         """
         startup_order = manifest.config.startup_order or [
             svc.name for svc in manifest.services
         ]
         stack_name = manifest.stack.name
+        # Use a suffixed project name for dry-run to isolate from the live stack.
+        project_name = (stack_name + restore_suffix) if dry_run else stack_name
+        # Generate a no-ports compose override for dry-run; stored inside
+        # compose_workdir (itself a temp dir for dry-run) so cleanup is automatic.
+        no_ports_override: "Path | None" = None
+        if dry_run and compose_workdir and compose_workdir.exists():
+            no_ports_override = self._write_no_ports_override(manifest, compose_workdir)
 
         # ── Strategy 1: docker compose up from saved snapshot config ──── #
         if not (compose_workdir is not None and compose_workdir.exists() and manifest.config.compose_files):
@@ -624,11 +649,13 @@ class RestoreEngine:
             ]
             cmd = [
                 "docker", "compose",
-                "--project-name", stack_name,
+                "--project-name", project_name,
                 "--project-directory", str(compose_workdir),
             ]
             for cf in compose_files:
                 cmd += ["-f", cf]
+            if no_ports_override:
+                cmd += ["-f", str(no_ports_override)]
             cmd += ["up", "-d"]
             # Build subprocess env: inherit current env then overlay vars captured
             # at snapshot time (Portainer-injected values, etc.)
@@ -666,7 +693,11 @@ class RestoreEngine:
                 logger.warning("docker CLI not found; falling back to SDK container start")
 
         # ── Strategy 2: docker compose up using original host paths ───── #
-        if manifest.stack.type == "compose" and manifest.stack.compose_files:
+        # For dry-run without a ports override (snapshot has no compose files),
+        # skip to avoid port conflicts with the running live stack.
+        if manifest.stack.type == "compose" and manifest.stack.compose_files and (
+            not dry_run or no_ports_override is not None
+        ):
             compose_files = manifest.stack.compose_files
             accessible = all(Path(cf).exists() for cf in compose_files)
 
@@ -687,11 +718,13 @@ class RestoreEngine:
                 working_dir = str(Path(compose_files[0]).parent)
                 cmd = [
                     "docker", "compose",
-                    "--project-name", stack_name,
+                    "--project-name", project_name,
                     "--project-directory", working_dir,
                 ]
                 for cf in compose_files:
                     cmd += ["-f", cf]
+                if no_ports_override:
+                    cmd += ["-f", str(no_ports_override)]
                 cmd += ["up", "-d"]
                 try:
                     result = subprocess.run(
@@ -722,6 +755,15 @@ class RestoreEngine:
                 )
 
         # ── Strategy 3: SDK container.start() on stopped containers ───── #
+        # Skipped for dry-run: SDK start would bind the same host ports as the
+        # live stack, causing health-check conflicts.
+        if dry_run:
+            logger.info(
+                "[%s] Dry-run: volume data restored to isolated volumes; "
+                "skipping SDK container start.",
+                stack_name,
+            )
+            return
         container_map: dict[str, object] = {}
         for container in self._docker.containers.list(all=True):
             proj = container.labels.get("com.docker.compose.project", "")
@@ -786,6 +828,20 @@ class RestoreEngine:
     # ------------------------------------------------------------------ #
     # Helpers                                                               #
     # ------------------------------------------------------------------ #
+
+    @staticmethod
+    def _write_no_ports_override(manifest: Manifest, workdir: Path) -> Path:
+        """Write a compose override that clears all port bindings for dry-run.
+
+        Placed in *workdir* and passed to ``docker compose up`` via ``-f`` so
+        that dry-run containers start without binding host ports, preventing
+        conflicts with the running live stack.
+        """
+        services = {svc.name: {"ports": []} for svc in manifest.services}
+        override = {"services": services}
+        override_path = workdir / "docker-compose.no-ports.yml"
+        override_path.write_text(yaml.safe_dump(override, default_flow_style=False))
+        return override_path
 
     async def _emit(
         self,

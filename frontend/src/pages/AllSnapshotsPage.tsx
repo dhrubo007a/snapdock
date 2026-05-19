@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Upload, Search, ChevronDown, ChevronRight,
   Lock, Unlock, RotateCcw, Download, Trash2, AlertCircle,
-  CheckCircle, RefreshCw, Radio, ExternalLink,
+  CheckCircle, RefreshCw, Radio, ExternalLink, FlaskConical,
 } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import clsx from 'clsx'
@@ -354,10 +354,16 @@ function SnapshotRow({
     data_loss_window: string
   } | null>(null)
   const [restoring, setRestoring] = useState(false)
+  const [isDryRunning, setIsDryRunning] = useState(false)
   const [exporting, setExporting] = useState(false)
   const logEndRef = useRef<HTMLDivElement>(null)
 
   const restoreDone = restoring && (
+    restoreEvents[0]?.event_type === 'restore.complete' ||
+    restoreEvents[0]?.event_type === 'restore.error'
+  )
+
+  const dryRunDone = isDryRunning && (
     restoreEvents[0]?.event_type === 'restore.complete' ||
     restoreEvents[0]?.event_type === 'restore.error'
   )
@@ -371,6 +377,12 @@ function SnapshotRow({
     const t = setTimeout(() => { setRestoring(false); onRefresh() }, 2000)
     return () => clearTimeout(t)
   }, [restoreDone])
+
+  useEffect(() => {
+    if (!dryRunDone) return
+    const t = setTimeout(() => setIsDryRunning(false), 3000)
+    return () => clearTimeout(t)
+  }, [dryRunDone])
 
   const restoreProbe = useMutation({
     mutationFn: () =>
@@ -397,6 +409,15 @@ function SnapshotRow({
       setRestoreConfirm(null)
       setRestoring(true)
     },
+  })
+
+  const dryRunMutation = useMutation({
+    mutationFn: () =>
+      api.post(`/stacks/${snap.stack_name}/snapshots/${snap.id}/restore`, {
+        confirmed: false,
+        dry_run: true,
+      }),
+    onSuccess: () => setIsDryRunning(true),
   })
 
   const toggleLock = useMutation({
@@ -511,6 +532,18 @@ function SnapshotRow({
                 : <RotateCcw size={12} />}
             </button>
 
+            {/* Dry Run */}
+            <button
+              onClick={() => dryRunMutation.mutate()}
+              disabled={dryRunMutation.isPending || isDryRunning || restoring || !snap.complete}
+              title={isDryRunning ? 'Dry run in progress…' : 'Dry-run restore (no data overwrite)'}
+              className="p-1.5 rounded text-gray-500 hover:text-blue-400 hover:bg-blue-500/10 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              {dryRunMutation.isPending || isDryRunning
+                ? <RefreshCw size={12} className="animate-spin" />
+                : <FlaskConical size={12} />}
+            </button>
+
             {/* Export */}
             <button
               onClick={handleExport}
@@ -570,6 +603,44 @@ function SnapshotRow({
                     <div key={i} className={clsx(
                       'flex items-center gap-2.5 px-3 py-1 text-[11px]',
                       isDone ? 'text-green-400' : isError ? 'text-red-400' : 'text-gray-400',
+                    )}>
+                      <span className="text-gray-700 tabular-nums shrink-0">
+                        {(e.timestamp ?? '').slice(11, 19)}
+                      </span>
+                      {isDone && <CheckCircle size={9} className="shrink-0" />}
+                      {isError && <AlertCircle size={9} className="shrink-0" />}
+                      <span className="truncate">{e.message}</span>
+                    </div>
+                  )
+                })}
+                <div ref={logEndRef} />
+              </div>
+            </div>
+          </td>
+        </tr>
+      )}
+
+      {/* Dry-run log */}
+      {isDryRunning && (
+        <tr>
+          <td colSpan={8} className="px-4 pb-3">
+            <div className="bg-gray-900/60 border border-gray-800 rounded-lg overflow-hidden">
+              <div className="flex items-center gap-2 px-3 py-1.5 border-b border-gray-800/60">
+                <FlaskConical size={9} className={dryRunDone ? 'text-blue-400' : 'text-blue-400 animate-pulse'} />
+                <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-600">
+                  {dryRunDone
+                    ? restoreEvents[0]?.event_type === 'restore.error' ? 'Dry run failed' : 'Dry run complete'
+                    : `Dry running ${snap.stack_name}`}
+                </span>
+              </div>
+              <div className="max-h-28 overflow-y-auto divide-y divide-gray-800/30 no-scrollbar">
+                {restoreEvents.slice(0, 20).map((e, i) => {
+                  const isDone  = e.event_type === 'restore.complete'
+                  const isError = e.event_type === 'restore.error'
+                  return (
+                    <div key={i} className={clsx(
+                      'flex items-center gap-2.5 px-3 py-1 text-[11px]',
+                      isDone ? 'text-blue-400' : isError ? 'text-red-400' : 'text-gray-400',
                     )}>
                       <span className="text-gray-700 tabular-nums shrink-0">
                         {(e.timestamp ?? '').slice(11, 19)}

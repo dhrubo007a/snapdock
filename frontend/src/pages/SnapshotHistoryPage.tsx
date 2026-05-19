@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, type ChangeEvent } from 'react'
 import {
   Lock, Unlock, RotateCcw, CheckCircle, Clock,
   ArrowLeft, Radio, AlertCircle, Trash2, Camera, RefreshCw, Download, Upload,
+  FlaskConical,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { formatDistanceToNow } from 'date-fns'
@@ -365,6 +366,7 @@ function SnapshotRow({
     data_loss_window: string
   } | null>(null)
   const [restoring, setRestoring] = useState(false)
+  const [isDryRunning, setIsDryRunning] = useState(false)
   const logEndRef = useRef<HTMLDivElement>(null)
 
   // events are newest-first; check index 0 for completion
@@ -373,15 +375,26 @@ function SnapshotRow({
     restoreEvents[0]?.event_type === 'restore.error'
   )
 
+  const dryRunDone = isDryRunning && (
+    restoreEvents[0]?.event_type === 'restore.complete' ||
+    restoreEvents[0]?.event_type === 'restore.error'
+  )
+
   // Auto-scroll restore log to bottom
   useEffect(() => { logEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [restoreEvents.length])
 
-  // Close panel after completion
+  // Close panels after completion
   useEffect(() => {
     if (!restoreDone) return
     const t = setTimeout(() => { setRestoring(false); onRefresh() }, 2000)
     return () => clearTimeout(t)
   }, [restoreDone])
+
+  useEffect(() => {
+    if (!dryRunDone) return
+    const t = setTimeout(() => setIsDryRunning(false), 3000)
+    return () => clearTimeout(t)
+  }, [dryRunDone])
 
   const restoreProbe = useMutation({
     mutationFn: () =>
@@ -408,6 +421,15 @@ function SnapshotRow({
       setRestoreConfirm(null)
       setRestoring(true)
     },
+  })
+
+  const dryRunMutation = useMutation({
+    mutationFn: () =>
+      api.post(`/stacks/${stackName}/snapshots/${snap.id}/restore`, {
+        confirmed: false,
+        dry_run: true,
+      }),
+    onSuccess: () => setIsDryRunning(true),
   })
 
   const toggleLock = useMutation({
@@ -511,6 +533,15 @@ function SnapshotRow({
             >
               <RotateCcw size={11} className={(restoreProbe.isPending || restoreConfirmed.isPending || restoring) ? 'animate-spin' : ''} />
             </button>
+            {/* Dry Run */}
+            <button
+              onClick={() => dryRunMutation.mutate()}
+              disabled={dryRunMutation.isPending || isDryRunning || restoring}
+              title={isDryRunning ? 'Dry run in progress…' : 'Dry-run restore (no data overwrite)'}
+              className="p-1.5 rounded-md bg-gray-800 hover:bg-blue-900/60 text-gray-400 hover:text-blue-300 transition-colors disabled:opacity-50"
+            >
+              <FlaskConical size={11} className={(dryRunMutation.isPending || isDryRunning) ? 'animate-pulse' : ''} />
+            </button>
             {/* Export */}
             <button
               onClick={handleExport}
@@ -575,6 +606,48 @@ function SnapshotRow({
                   )
                 })}
                 <div ref={logEndRef} />
+              </div>
+            </div>
+          </td>
+        </tr>
+      )}
+
+      {/* Dry-run log */}
+      {isDryRunning && (
+        <tr>
+          <td colSpan={8} className="px-4 py-3 bg-gray-950/60 border-t border-gray-800">
+            <div className="space-y-2">
+              <div className={clsx(
+                'flex items-center gap-2 text-[11px] font-semibold uppercase tracking-widest',
+                dryRunDone
+                  ? restoreEvents[0]?.event_type === 'restore.error' ? 'text-red-400' : 'text-blue-400'
+                  : 'text-blue-400',
+              )}>
+                {dryRunDone
+                  ? restoreEvents[0]?.event_type === 'restore.error'
+                    ? <AlertCircle size={11} />
+                    : <FlaskConical size={11} />
+                  : <FlaskConical size={11} className="animate-pulse" />}
+                {dryRunDone
+                  ? restoreEvents[0]?.event_type === 'restore.error' ? 'Dry run failed' : 'Dry run complete'
+                  : `Dry running — ${snap.id}`}
+              </div>
+              <div className="max-h-40 overflow-y-auto space-y-0.5 font-mono text-[11px]">
+                {[...restoreEvents].reverse().map((e, i) => {
+                  const isError = e.event_type === 'restore.error' || e.status === 'error'
+                  const isDone  = e.event_type === 'restore.complete'
+                  return (
+                    <div key={i} className={clsx(
+                      'flex items-start gap-2 px-2 py-0.5 rounded',
+                      isError ? 'text-red-400 bg-red-950/20' :
+                      isDone  ? 'text-blue-400 bg-blue-950/20' :
+                                'text-gray-400',
+                    )}>
+                      <span className="shrink-0 tabular-nums text-gray-600">{(e.timestamp ?? '').slice(11, 19)}</span>
+                      <span className="break-all">{e.message}</span>
+                    </div>
+                  )
+                })}
               </div>
             </div>
           </td>

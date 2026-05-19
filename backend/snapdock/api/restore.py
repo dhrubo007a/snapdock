@@ -99,7 +99,7 @@ async def trigger_restore(
                     outcome="SUCCESS" if success else "FAILED",
                 )
             )
-            if body.dry_run and not body.dry_run:
+            if body.dry_run:
                 snap.verified = success
                 snap.verified_at = datetime.utcnow() if success else None
             db.commit()

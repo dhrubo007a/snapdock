@@ -67,7 +67,7 @@ services:
     restart: unless-stopped
     env_file: .env
     ports:
-      - "8050:8000"
+      - "9000:8000"
     volumes:
       # Docker socket — required for container ops
       - /var/run/docker.sock:/var/run/docker.sock:ro
@@ -93,8 +93,8 @@ services:
     build: ./frontend
     restart: unless-stopped
     ports:
-      - "8051:80"
-      - "8443:443"
+      - "9001:80"
+      - "9443:443"
     depends_on:
       - snapdock
     deploy:
