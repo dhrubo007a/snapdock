@@ -671,6 +671,32 @@ function SnapshotRow({
                   )
                 })}
               </div>
+              {/* Ephemeral preview URLs */}
+              {dryRunDone && (() => {
+                const completeEvent = restoreEvents.find(e => e.event_type === 'restore.complete')
+                const ports = completeEvent?.data?.dry_run_ports as Record<string, Array<{host_port: number; container_port: number; protocol: string}>> | undefined
+                if (!ports || Object.keys(ports).length === 0) return null
+                return (
+                  <div className="mt-2 pt-2 border-t border-blue-900/30">
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-blue-500 mb-1.5">Preview URLs (ephemeral — valid until teardown)</p>
+                    <div className="flex flex-wrap gap-2">
+                      {Object.entries(ports).flatMap(([svc, bindings]) =>
+                        bindings.map((b, i) => (
+                          <a
+                            key={`${svc}-${i}`}
+                            href={`http://localhost:${b.host_port}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-[11px] font-mono px-2 py-0.5 rounded bg-blue-900/30 text-blue-300 hover:text-blue-100 hover:bg-blue-900/60 transition-colors"
+                          >
+                            {svc}:{b.container_port} → :{b.host_port}
+                          </a>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )
+              })()}
             </div>
           </td>
         </tr>

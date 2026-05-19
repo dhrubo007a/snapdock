@@ -61,4 +61,5 @@ export interface SnapDockEvent {
   status?: string
   message?: string
   timestamp?: string
+  data?: Record<string, any>
 }

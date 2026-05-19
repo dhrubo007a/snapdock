@@ -253,8 +253,22 @@ class RestoreEngine:
                 "ok" if health.is_clean else "warning",
             )
 
-        # Dry-run: tear down isolated environment
+        # Dry-run: collect ephemeral ports, then tear down isolated environment
+        dry_run_ports: dict = {}
         if dry_run:
+            dry_run_ports = await asyncio.to_thread(
+                self._collect_dry_run_ports, manifest.stack.name + restore_suffix
+            )
+            if dry_run_ports:
+                port_summary = ", ".join(
+                    f"{svc}→:{info[0]['host_port']}"
+                    for svc, info in dry_run_ports.items()
+                    if info
+                )
+                await self._emit(
+                    snap_id, stack_name, "restore.step",
+                    f"Dry-run stack is live on ephemeral ports: {port_summary}", "ok",
+                )
             await self._emit(snap_id, stack_name, "restore.step", "Tearing down dry-run environment…", "running")
             await asyncio.to_thread(self._teardown_dry_run, manifest, restore_suffix)
 
@@ -262,7 +276,7 @@ class RestoreEngine:
         await self._emit(
             snap_id, stack_name, "restore.complete",
             f"{'Dry-run restore' if dry_run else 'Restore'} complete", "ok",
-            data={"snapshot_id": snap_id, "dry_run": dry_run},
+            data={"snapshot_id": snap_id, "dry_run": dry_run, "dry_run_ports": dry_run_ports},
         )
         return True
 
@@ -628,7 +642,7 @@ class RestoreEngine:
         # compose_workdir (itself a temp dir for dry-run) so cleanup is automatic.
         no_ports_override: "Path | None" = None
         if dry_run and compose_workdir and compose_workdir.exists():
-            no_ports_override = self._write_no_ports_override(manifest, compose_workdir)
+            no_ports_override = self._write_ephemeral_ports_override(manifest, compose_workdir)
 
         # ── Strategy 1: docker compose up from saved snapshot config ──── #
         if not (compose_workdir is not None and compose_workdir.exists() and manifest.config.compose_files):
@@ -795,6 +809,23 @@ class RestoreEngine:
 
     def _teardown_dry_run(self, manifest: Manifest, restore_suffix: str) -> None:
         """Remove containers and volumes created during a dry-run restore."""
+        project_name = manifest.stack.name + restore_suffix
+        # Stop and remove containers belonging to the isolated dry-run project.
+        try:
+            containers = self._docker.containers.list(
+                all=True,
+                filters={"label": f"com.docker.compose.project={project_name}"},
+            )
+            for container in containers:
+                try:
+                    container.stop(timeout=5)
+                    container.remove(force=True)
+                    logger.debug("Dry-run cleanup: removed container %s", container.name)
+                except Exception as exc:
+                    logger.warning("Could not remove dry-run container %s: %s", container.name, exc)
+        except Exception as exc:
+            logger.warning("Could not list dry-run containers for %s: %s", project_name, exc)
+        # Remove volumes created with the restore suffix.
         for vol in manifest.volumes:
             if vol.type in ("named", "anonymous") and (vol.name or vol.id):
                 target_name = (vol.name or vol.id or "") + restore_suffix
@@ -827,18 +858,92 @@ class RestoreEngine:
     # ------------------------------------------------------------------ #
 
     @staticmethod
-    def _write_no_ports_override(manifest: Manifest, workdir: Path) -> Path:
-        """Write a compose override that clears all port bindings for dry-run.
+    def _write_ephemeral_ports_override(manifest: Manifest, workdir: Path) -> Path:
+        """Write a compose override that binds each service's ports to ephemeral host ports.
 
-        Placed in *workdir* and passed to ``docker compose up`` via ``-f`` so
-        that dry-run containers start without binding host ports, preventing
-        conflicts with the running live stack.
+        Each ``HOST:CONTAINER`` mapping is replaced with ``0:CONTAINER`` so that
+        Docker assigns a random free host port, avoiding conflicts with the live
+        stack while still making the dry-run containers reachable for inspection.
+        Services whose compose definition exposes no ports get ``ports: []``.
+
+        Placed in *workdir* and passed to ``docker compose up`` via ``-f``.
         """
-        services = {svc.name: {"ports": []} for svc in manifest.services}
+        # Parse the first compose file to find container-side port numbers.
+        container_ports: dict[str, list[str]] = {}
+        if manifest.config.compose_files:
+            compose_path = workdir / manifest.config.compose_files[0]
+            if compose_path.exists():
+                try:
+                    data = yaml.safe_load(compose_path.read_text()) or {}
+                    for svc_name, svc_cfg in (data.get("services") or {}).items():
+                        ports: list[str] = []
+                        for p in (svc_cfg or {}).get("ports") or []:
+                            if isinstance(p, int):
+                                ports.append(f"0:{p}")
+                            elif isinstance(p, str):
+                                # "[ip:]host:container[/proto]" or "container[/proto]"
+                                parts = p.split(":")
+                                cport = parts[-1]  # last segment is always container
+                                ports.append(f"0:{cport}")
+                            elif isinstance(p, dict):
+                                target = p.get("target")
+                                if target:
+                                    proto = p.get("protocol", "tcp")
+                                    ports.append(f"0:{target}/{proto}")
+                        if ports:
+                            container_ports[svc_name] = ports
+                except Exception as exc:
+                    logger.debug("Could not parse compose file for ephemeral ports: %s", exc)
+
+        services = {
+            svc.name: {"ports": container_ports.get(svc.name, [])}
+            for svc in manifest.services
+        }
         override = {"services": services}
-        override_path = workdir / "docker-compose.no-ports.yml"
+        override_path = workdir / "docker-compose.ephemeral-ports.yml"
         override_path.write_text(yaml.safe_dump(override, default_flow_style=False))
         return override_path
+
+    def _collect_dry_run_ports(
+        self, project_name: str
+    ) -> dict[str, list[dict]]:
+        """Return host ports assigned to dry-run containers.
+
+        Inspects every container in *project_name* and extracts the ephemeral
+        host port bindings chosen by Docker.  Returns a mapping::
+
+            {"service_name": [{"host_port": 32768, "container_port": 80, "protocol": "tcp"}, …]}
+
+        Only entries with a non-zero HostPort are included.
+        """
+        result: dict[str, list[dict]] = {}
+        try:
+            containers = self._docker.containers.list(
+                filters={"label": f"com.docker.compose.project={project_name}"}
+            )
+            for container in containers:
+                container.reload()  # ensure NetworkSettings is populated
+                svc_name = container.labels.get(
+                    "com.docker.compose.service", container.name
+                )
+                ports_info: list[dict] = []
+                for spec, bindings in (container.attrs.get("NetworkSettings", {}).get("Ports") or {}).items():
+                    if not bindings:
+                        continue
+                    cport_str, proto = (spec.split("/") + ["tcp"])[:2]
+                    for binding in bindings:
+                        host_port = binding.get("HostPort")
+                        if host_port and host_port != "0":
+                            ports_info.append({
+                                "host_port": int(host_port),
+                                "container_port": int(cport_str),
+                                "protocol": proto,
+                            })
+                if ports_info:
+                    result[svc_name] = ports_info
+        except Exception as exc:
+            logger.warning("Could not collect dry-run ports: %s", exc)
+        return result
 
     async def _emit(
         self,
