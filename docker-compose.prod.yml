@@ -1,0 +1,111 @@
+# SnapDock — production docker-compose
+# Usage:
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# Prerequisites on the target host:
+#   docker load -i snapdock-backend.tar
+#   docker load -i snapdock-ui.tar
+#
+# Environment variables are injected via Portainer — no .env file needed.
+
+services:
+
+  # --------------------------------------------------------------------------
+  # PostgreSQL database
+  # --------------------------------------------------------------------------
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       ${POSTGRES_DB}
+      POSTGRES_USER:     ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - snapdock-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1g
+
+  # --------------------------------------------------------------------------
+  # PostgreSQL backup (daily pg_dump, retains 7 days)
+  # --------------------------------------------------------------------------
+  db-backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - snapdock-pgbackups:/backups
+    depends_on:
+      db:
+        condition: service_healthy
+    entrypoint: >
+      sh -c "
+        echo 'Waiting 60s before first backup...';
+        sleep 60;
+        while true; do
+          FNAME=/backups/snapdock_$$(date +%Y%m%d_%H%M%S).sql.gz;
+          pg_dump -h db -U $$POSTGRES_USER $$POSTGRES_DB | gzip > $$FNAME;
+          echo "Backup written: $$FNAME";
+          find /backups -name '*.sql.gz' -mtime +7 -delete;
+          sleep 86400;
+        done
+      "
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 256m
+
+  # --------------------------------------------------------------------------
+  # SnapDock daemon (FastAPI backend)
+  # --------------------------------------------------------------------------
+  snapdock:
+    image: ghcr.io/dhrubo007a/snapdock-backend:latest
+    restart: unless-stopped
+    environment:
+      SNAPDOCK_ENCRYPTION_KEY: ${SNAPDOCK_ENCRYPTION_KEY}
+      SNAPDOCK_JWT_SECRET: ${SNAPDOCK_JWT_SECRET}
+      SNAPDOCK_DATABASE_URL: ${SNAPDOCK_DATABASE_URL}
+      SNAPDOCK_DEBUG: ${SNAPDOCK_DEBUG:-false}
+    ports:
+      - "8050:8000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - snapdock-snapshots:/var/lib/snapdock/snapshots
+    depends_on:
+      db:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512m
+
+  # --------------------------------------------------------------------------
+  # SnapDock UI (React / Nginx)
+  # --------------------------------------------------------------------------
+  snapdock-ui:
+    image: ghcr.io/dhrubo007a/snapdock-ui:latest
+    restart: unless-stopped
+    ports:
+      - "8051:80"
+    depends_on:
+      - snapdock
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128m
+
+volumes:
+  snapdock-pgdata:
+  snapdock-snapshots:
+  snapdock-pgbackups:

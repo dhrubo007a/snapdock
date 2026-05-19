@@ -1,0 +1,198 @@
+SnapDock Source Available License
+Version 1.0, May 2026
+
+Copyright (c) 2026 Fahim Ahmed. All rights reserved.
+
+────────────────────────────────────────────────────────────────────────────────
+PREAMBLE
+────────────────────────────────────────────────────────────────────────────────
+
+This license governs use of the accompanying software ("SnapDock"). By using,
+copying, modifying, or distributing SnapDock, you accept and agree to be bound
+by the terms of this license. If you do not agree to these terms, do not use,
+copy, modify, or distribute SnapDock.
+
+The intent of this license is simple: SnapDock is free for individuals running
+it at home, for students learning from it, and for educators teaching with it.
+If you are using it to make money — whether by selling it, offering it as a
+service, or building a commercial product on top of it — you need to ask first.
+
+────────────────────────────────────────────────────────────────────────────────
+SECTION 1 — DEFINITIONS
+────────────────────────────────────────────────────────────────────────────────
+
+1.1 "Software" means the SnapDock source code, compiled binaries, Docker images,
+    documentation, and any associated materials made available under this license.
+
+1.2 "Personal Use" means use by a single individual on hardware they personally
+    own or rent, exclusively for their own non-commercial benefit. This includes
+    self-hosting SnapDock in a home lab environment to manage containers running
+    on personal servers, NAS devices, Raspberry Pi clusters, or similar equipment.
+
+1.3 "Educational Use" means use by students, teachers, or researchers within an
+    academic institution (school, college, university, or coding bootcamp) for
+    learning, teaching, coursework, research papers, or academic demonstrations.
+    This includes use in open-source academic projects published without charge.
+
+1.4 "Non-Commercial Open-Source Use" means use within a software project that
+    is (a) published under an OSI-approved open-source license, (b) not sold or
+    monetised in any form, and (c) does not generate revenue for any individual
+    or organisation, directly or indirectly.
+
+1.5 "Commercial Use" means any use not covered by Sections 1.2, 1.3, or 1.4
+    above, including but not limited to:
+      (a) running SnapDock as part of a paid product or paid service;
+      (b) running SnapDock internally within a for-profit company or organisation,
+          even if SnapDock itself is not sold;
+      (c) offering SnapDock or a derivative of it as a hosted or managed service
+          (SaaS, PaaS, or similar) to any third party, whether for payment or free;
+      (d) embedding SnapDock into a commercial product or commercial distribution;
+      (e) using SnapDock to generate revenue, directly or indirectly, for any
+          individual, company, or organisation.
+
+1.6 "Derivative Work" means any work that incorporates, modifies, extends, forks,
+    or builds upon the Software in any material way.
+
+1.7 "Licensor" means Fahim Ahmed, the copyright holder of the Software.
+
+────────────────────────────────────────────────────────────────────────────────
+SECTION 2 — GRANT OF RIGHTS (PERMITTED USES)
+────────────────────────────────────────────────────────────────────────────────
+
+Subject to the conditions in Section 3, the Licensor hereby grants you a
+worldwide, royalty-free, non-exclusive, non-transferable license to:
+
+2.1 Use, run, and self-host the Software for Personal Use as defined in
+    Section 1.2.
+
+2.2 Use, run, and deploy the Software for Educational Use as defined in
+    Section 1.3.
+
+2.3 Use the Software for Non-Commercial Open-Source Use as defined in
+    Section 1.4.
+
+2.4 Copy, modify, and create Derivative Works of the Software for any of the
+    permitted purposes listed in Sections 2.1, 2.2, and 2.3.
+
+2.5 Share the Software and Derivative Works with others, provided that all
+    conditions in Section 3 are met.
+
+────────────────────────────────────────────────────────────────────────────────
+SECTION 3 — CONDITIONS
+────────────────────────────────────────────────────────────────────────────────
+
+Any exercise of the rights granted in Section 2 is subject to all of the
+following conditions:
+
+3.1 ATTRIBUTION: All copies or substantial portions of the Software — including
+    Derivative Works — must retain:
+      (a) this copyright notice: "Copyright (c) 2026 Fahim Ahmed";
+      (b) this license in full, or a prominent link to the canonical copy of
+          this license at the project's official repository; and
+      (c) a clear notice identifying any modifications made to the original
+          Software, if any.
+
+3.2 NO LICENSE REMOVAL: You must not remove, obscure, or alter this license, the
+    copyright notice, or any attribution notices in the Software or Derivative
+    Works.
+
+3.3 NO COMMERCIAL USE WITHOUT PERMISSION: Commercial Use (as defined in
+    Section 1.5) is strictly prohibited without prior written permission from
+    the Licensor. To request a commercial license, contact:
+        dhruboalok0@gmail.com
+    with the subject line "SnapDock Commercial License Request". Commercial
+    licenses may be granted at the Licensor's sole discretion on agreed terms.
+
+3.4 SHARE-ALIKE FOR DERIVATIVE WORKS: If you create and distribute a Derivative
+    Work under the permitted uses in Section 2, you must license that Derivative
+    Work under this same license (SnapDock Source Available License v1.0) and
+    make the source code publicly available.
+
+3.5 NO MISREPRESENTATION: You must not represent SnapDock or any Derivative Work
+    as your own original creation in a way that misleads others about its origin.
+    You must not claim endorsement by the Licensor without written permission.
+
+────────────────────────────────────────────────────────────────────────────────
+SECTION 4 — COMMERCIAL LICENSING
+────────────────────────────────────────────────────────────────────────────────
+
+4.1 If you wish to use SnapDock for Commercial Use, you must obtain a separate
+    written commercial license from the Licensor before commencing such use.
+
+4.2 To inquire about a commercial license, contact:
+        Fahim Ahmed
+        dhruboalok0@gmail.com
+    Please describe your intended use case, your organisation, and the scope
+    of deployment. The Licensor will respond within a reasonable time.
+
+4.3 Using SnapDock for Commercial Use without a commercial license is a material
+    breach of this license and infringes the Licensor's copyright.
+
+────────────────────────────────────────────────────────────────────────────────
+SECTION 5 — TERMINATION
+────────────────────────────────────────────────────────────────────────────────
+
+5.1 This license is effective until terminated. Your rights under this license
+    terminate automatically and without notice if you fail to comply with any
+    term of this license.
+
+5.2 Upon termination, you must immediately cease all use and distribution of the
+    Software and destroy all copies in your possession.
+
+5.3 The Licensor may reinstate your rights at their sole discretion upon written
+    notice if the breach is cured within 30 days of the Licensor becoming aware
+    of the breach.
+
+────────────────────────────────────────────────────────────────────────────────
+SECTION 6 — DISCLAIMER OF WARRANTIES
+────────────────────────────────────────────────────────────────────────────────
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE, TITLE, AND NON-INFRINGEMENT. THE LICENSOR DOES NOT
+WARRANT THAT THE SOFTWARE WILL BE ERROR-FREE, THAT DEFECTS WILL BE CORRECTED,
+OR THAT THE SOFTWARE IS FREE OF VIRUSES OR OTHER HARMFUL COMPONENTS.
+
+USE OF THE SOFTWARE IS AT YOUR SOLE RISK. YOU ARE SOLELY RESPONSIBLE FOR ANY
+DAMAGE TO YOUR SYSTEMS, LOSS OF DATA, OR OTHER HARM THAT RESULTS FROM SUCH USE.
+
+────────────────────────────────────────────────────────────────────────────────
+SECTION 7 — LIMITATION OF LIABILITY
+────────────────────────────────────────────────────────────────────────────────
+
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT SHALL THE
+LICENSOR BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, LOSS OF DATA, LOSS OF
+PROFITS, BUSINESS INTERRUPTION, OR LOSS OF GOODWILL) ARISING OUT OF OR IN
+CONNECTION WITH THE USE OR INABILITY TO USE THE SOFTWARE, EVEN IF THE LICENSOR
+HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
+
+THE LICENSOR'S TOTAL LIABILITY TO YOU FOR ALL CLAIMS ARISING UNDER THIS LICENSE
+SHALL NOT EXCEED THE AMOUNT YOU PAID FOR THE SOFTWARE (WHICH, FOR FREE COPIES,
+IS ZERO).
+
+────────────────────────────────────────────────────────────────────────────────
+SECTION 8 — GENERAL
+────────────────────────────────────────────────────────────────────────────────
+
+8.1 ENTIRE AGREEMENT: This license constitutes the entire agreement between you
+    and the Licensor with respect to the Software and supersedes all prior
+    agreements and understandings.
+
+8.2 SEVERABILITY: If any provision of this license is found to be unenforceable
+    or invalid under applicable law, that provision shall be modified to the
+    minimum extent necessary to make it enforceable, or if that is not possible,
+    severed from this license. The remaining provisions shall remain in full
+    force and effect.
+
+8.3 NO WAIVER: Failure by the Licensor to enforce any provision of this license
+    shall not constitute a waiver of future enforcement of that or any other
+    provision.
+
+8.4 GOVERNING LAW: This license shall be governed by and construed in accordance
+    with applicable law, without regard to conflict-of-law principles.
+
+8.5 CONTACT: For all inquiries — including commercial licensing, permissions
+    beyond the scope of this license, or questions about permitted uses — contact:
+        Fahim Ahmed
+        dhruboalok0@gmail.com

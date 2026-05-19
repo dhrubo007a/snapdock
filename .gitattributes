@@ -1,0 +1,47 @@
+# Default: normalize line endings to LF on check-in, convert to OS native on checkout
+* text=auto
+
+# Shell scripts must always use LF — they run inside Linux containers
+*.sh text eol=lf
+
+# Python files: LF
+*.py text eol=lf
+
+# Config / data files: LF
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.toml text eol=lf
+*.ini text eol=lf
+*.cfg text eol=lf
+*.env text eol=lf
+*.env.example text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.conf text eol=lf
+*.mako text eol=lf
+Dockerfile text eol=lf
+Dockerfile.* text eol=lf
+
+# TypeScript / JavaScript: LF
+*.ts text eol=lf
+*.tsx text eol=lf
+*.js text eol=lf
+*.jsx text eol=lf
+*.css text eol=lf
+*.html text eol=lf
+
+# Binary files: no line ending conversion
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+*.tar binary
+*.tar.gz binary
+*.gz binary
+*.zip binary

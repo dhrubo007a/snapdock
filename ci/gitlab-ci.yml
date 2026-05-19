@@ -1,0 +1,123 @@
+# SnapDock — GitLab CI/CD Integration Template
+#
+# Drop this into your application repo as .gitlab-ci.yml (or include it).
+# Configure these CI/CD variables in GitLab Settings → CI/CD → Variables:
+#
+#   SNAPDOCK_URL      Base URL of your SnapDock daemon (e.g. http://snapdock:8050)
+#   SNAPDOCK_API_KEY  API key created in SnapDock Settings → API Keys  (masked)
+#   STACK_NAME        Docker Compose stack name SnapDock should manage
+
+variables:
+  SNAPDOCK_URL: "http://snapdock:8050"        # override per-project if needed
+  STACK_NAME: "myapp"
+
+stages:
+  - snapshot
+  - deploy
+  - verify
+  - rollback
+
+# ── Helper: install the SnapDock CLI ───────────────────────────────────────────
+.snapdock_setup: &snapdock_setup |
+  pip install --quiet snapdock-cli
+
+# ── 1. Pre-deploy snapshot ─────────────────────────────────────────────────────
+# Captures the current running state before any changes are made.
+# The snapshot ID is saved as a dotenv artifact so later jobs can reference it.
+pre_deploy_snapshot:
+  stage: snapshot
+  image: python:3.12-slim
+  before_script:
+    - *snapdock_setup
+  script:
+    - |
+      snapdock snapshot "$STACK_NAME" \
+        --label "pre-deploy-${CI_COMMIT_SHORT_SHA}" \
+        --id-only \
+        --confirm > .snapdock_id_raw
+      # --id-only prints the snapshot ID immediately; wait for completion
+      SNAP_ID=$(cat .snapdock_id_raw | tr -d '\n')
+      snapdock wait "$STACK_NAME" --snapshot "$SNAP_ID" --timeout 300
+      echo "SNAPDOCK_PRE_DEPLOY_ID=${SNAP_ID}" >> deploy.env
+      echo "Pre-deploy snapshot: ${SNAP_ID}"
+  artifacts:
+    reports:
+      dotenv: deploy.env
+    expire_in: 1 day
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+
+# ── 2. Deploy ──────────────────────────────────────────────────────────────────
+# Replace the body of this job with your actual deployment steps.
+deploy:
+  stage: deploy
+  image: docker:26
+  services:
+    - docker:26-dind
+  needs:
+    - job: pre_deploy_snapshot
+      artifacts: true
+  script:
+    - echo "Deploying commit ${CI_COMMIT_SHORT_SHA}..."
+    - docker compose pull
+    - docker compose up -d --build --remove-orphans
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+
+# ── 3. Smoke-test / verify ─────────────────────────────────────────────────────
+# Checks SnapDock health and the stack state after deployment.
+post_deploy_verify:
+  stage: verify
+  image: python:3.12-slim
+  needs:
+    - job: pre_deploy_snapshot
+      artifacts: true
+    - deploy
+  before_script:
+    - *snapdock_setup
+  script:
+    - |
+      # Wait up to 60s for stack to settle
+      for i in $(seq 1 12); do
+        STATUS=$(snapdock status 2>&1)
+        if echo "$STATUS" | grep -q "CLEAN"; then
+          echo "Stack is CLEAN after deployment."
+          break
+        fi
+        echo "Waiting for stack to be CLEAN... (${i}/12)"
+        sleep 5
+      done
+
+      # Take a post-deploy snapshot and lock the pre-deploy one
+      POST_ID=$(snapdock snapshot "$STACK_NAME" \
+        --label "post-deploy-${CI_COMMIT_SHORT_SHA}" \
+        --id-only \
+        --confirm)
+      snapdock wait "$STACK_NAME" --snapshot "$POST_ID" --timeout 300
+      snapdock lock "$STACK_NAME" --snapshot "$SNAPDOCK_PRE_DEPLOY_ID"
+      echo "Pre-deploy snapshot ${SNAPDOCK_PRE_DEPLOY_ID} locked as rollback point."
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+
+# ── 4. Rollback (manual gate) ──────────────────────────────────────────────────
+# Triggered manually from the GitLab UI when a deployment needs reverting.
+rollback:
+  stage: rollback
+  image: python:3.12-slim
+  needs:
+    - job: pre_deploy_snapshot
+      artifacts: true
+  before_script:
+    - *snapdock_setup
+  script:
+    - |
+      echo "Rolling back to snapshot: ${SNAPDOCK_PRE_DEPLOY_ID}"
+      snapdock restore "$STACK_NAME" \
+        --snapshot "$SNAPDOCK_PRE_DEPLOY_ID" \
+        --confirm
+      echo "Rollback complete."
+  when: manual
+  allow_failure: false
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'

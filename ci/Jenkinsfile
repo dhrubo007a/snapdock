@@ -1,0 +1,108 @@
+// SnapDock — Jenkins Declarative Pipeline Template
+//
+// Configure these credentials / env vars in Jenkins:
+//   SNAPDOCK_API_KEY  Secret text credential — API key from SnapDock Settings
+//   SNAPDOCK_URL      String parameter or env var (e.g. http://snapdock:8050)
+//
+// Usage: place this file as Jenkinsfile at the root of your application repo.
+
+pipeline {
+    agent any
+
+    environment {
+        SNAPDOCK_URL     = 'http://snapdock:8050'          // adjust to your host
+        SNAPDOCK_API_KEY = credentials('snapdock-api-key') // Jenkins secret-text credential
+        STACK_NAME       = 'myapp'
+    }
+
+    stages {
+
+        // ── 1. Pre-deploy snapshot ───────────────────────────────────────────
+        stage('Pre-Deploy Snapshot') {
+            steps {
+                sh '''
+                    pip install --quiet snapdock-cli
+                    SNAP_ID=$(snapdock snapshot "$STACK_NAME" \
+                        --label "pre-deploy-${GIT_COMMIT:0:8}" \
+                        --id-only \
+                        --confirm)
+                    snapdock wait "$STACK_NAME" --snapshot "$SNAP_ID" --timeout 300
+                    echo "$SNAP_ID" > .snapdock_pre_deploy_id
+                    echo "Pre-deploy snapshot: $SNAP_ID"
+                '''
+                // Stash the snapshot ID so later stages can access it
+                stash includes: '.snapdock_pre_deploy_id', name: 'snap-id'
+            }
+        }
+
+        // ── 2. Deploy ────────────────────────────────────────────────────────
+        stage('Deploy') {
+            steps {
+                sh '''
+                    echo "Deploying ${GIT_COMMIT}..."
+                    docker compose pull
+                    docker compose up -d --build --remove-orphans
+                '''
+            }
+        }
+
+        // ── 3. Verify ────────────────────────────────────────────────────────
+        stage('Verify') {
+            steps {
+                sh '''
+                    pip install --quiet snapdock-cli
+
+                    # Wait up to 60s for the stack to be CLEAN
+                    for i in $(seq 1 12); do
+                        STATUS=$(snapdock status 2>&1)
+                        if echo "$STATUS" | grep -q "CLEAN"; then
+                            echo "Stack is CLEAN."
+                            break
+                        fi
+                        echo "Waiting for CLEAN state... ($i/12)"
+                        sleep 5
+                    done
+
+                    # Take a post-deploy snapshot and wait for it
+                    POST_ID=$(snapdock snapshot "$STACK_NAME" \
+                        --label "post-deploy-${GIT_COMMIT:0:8}" \
+                        --id-only \
+                        --confirm)
+                    snapdock wait "$STACK_NAME" --snapshot "$POST_ID" --timeout 300
+                '''
+            }
+        }
+
+        // ── 4. Lock pre-deploy snapshot ──────────────────────────────────────
+        stage('Lock Rollback Point') {
+            steps {
+                unstash 'snap-id'
+                sh '''
+                    pip install --quiet snapdock-cli
+                    SNAP_ID=$(cat .snapdock_pre_deploy_id)
+                    snapdock lock "$STACK_NAME" --snapshot "$SNAP_ID"
+                    echo "Locked rollback point: $SNAP_ID"
+                '''
+            }
+        }
+    }
+
+    // ── Automatic rollback on failure ────────────────────────────────────────
+    post {
+        failure {
+            sh '''
+                pip install --quiet snapdock-cli || true
+                if [ -f .snapdock_pre_deploy_id ]; then
+                    SNAP_ID=$(cat .snapdock_pre_deploy_id)
+                    echo "Deployment failed — restoring to snapshot: $SNAP_ID"
+                    snapdock restore "$STACK_NAME" --snapshot "$SNAP_ID" --confirm || true
+                else
+                    echo "No pre-deploy snapshot ID found — cannot auto-rollback."
+                fi
+            '''
+        }
+        always {
+            cleanWs()
+        }
+    }
+}
