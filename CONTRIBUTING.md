@@ -79,7 +79,7 @@ docker compose up -d
 | `backend/snapdock/auth/` | JWT, API keys, RBAC |
 | `backend/snapdock/models/` | Pydantic manifest model, API schemas |
 | `frontend/src/pages/` | React page components |
-| `frontend/src/hooks/` | WebSocket event hook |
+| `frontend/src/hooks/` | SSE (Server-Sent Events) event stream hook |
 | `cli/snapdock_cli/` | Click CLI |
 
 ---
