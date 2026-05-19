@@ -68,6 +68,9 @@ cp backend/snapdock.env.example backend/snapdock.env
 docker compose up -d
 ```
 
+- UI: `http://localhost:9001`
+- API / docs: `http://localhost:9000/docs`
+
 ---
 
 ## Project structure
