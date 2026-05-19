@@ -650,7 +650,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install SnapDock CLI
-        run: pip install -e ./cli
+        run: pip install git+https://github.com/dhrubo007a/snapdock.git#subdirectory=cli
 
       - name: Snapshot before deploy
         env:
@@ -678,7 +678,7 @@ jobs:
 deploy:
   stage: deploy
   before_script:
-    - pip install -e ./cli
+    - pip install git+https://github.com/dhrubo007a/snapdock.git#subdirectory=cli
   script:
     - export SNAP=$(snapdock snapshot myapp --label "pre-deploy-$CI_COMMIT_SHORT_SHA")
     - ./deploy.sh
@@ -705,7 +705,7 @@ pipeline {
     stages {
         stage('Snapshot') {
             steps {
-                sh 'pip install -e ./cli'
+                sh 'pip install git+https://github.com/dhrubo007a/snapdock.git#subdirectory=cli'
                 sh 'snapdock snapshot myapp --label "pre-deploy-${GIT_COMMIT[0..7]}"'
                 script { env.SNAP_ID = sh(script: 'snapdock latest myapp', returnStdout: true).trim() }
             }
