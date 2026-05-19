@@ -10,6 +10,7 @@ import CoveragePage from './pages/CoveragePage'
 import LoginPage from './pages/LoginPage'
 import SetupPage from './pages/SetupPage'
 import SettingsPage from './pages/SettingsPage'
+import AuditPage from './pages/AuditPage'
 
 /** Polls /api/setup/status once on mount. Returns null while loading. */
 function useSetupRequired(): boolean | null {
@@ -47,6 +48,7 @@ export default function App() {
         <Route path="/stacks/:stackName/snapshots/:snapshotId" element={<SnapshotInspectorPage />} />
         <Route path="/coverage" element={<CoveragePage />} />
         <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/audit" element={<AuditPage />} />
       </Route>
     </Routes>
   )

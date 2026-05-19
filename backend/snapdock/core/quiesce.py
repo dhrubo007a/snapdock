@@ -36,12 +36,31 @@ async def quiesce_container(
     container_id: str,
     image_name: str,
     timeout: int = 30,
+    override_method: str | None = None,
 ) -> QuiesceResult:
     """Detect DB type from image name and run the appropriate quiesce command.
+
+    When *override_method* is provided it takes precedence over auto-detection:
+    - ``"skip"``   → skip quiesce entirely (SIGTERM on stop)
+    - ``"auto"``   → use auto-detection (same as omitting the override)
+    - any key in ``_HANDLERS`` → call that specific handler
 
     Returns a ``QuiesceResult`` — never raises.  A failed or missing CLI is
     treated as a skipped quiesce (logged as a warning).
     """
+    # Apply override if requested
+    if override_method and override_method != "auto":
+        if override_method == "skip":
+            return QuiesceResult(method=None, outcome="skipped", message="skipped by service override")
+        handler = _HANDLERS.get(override_method)
+        if handler:
+            return await handler(docker_client, container_id, override_method, timeout)
+        logger.warning(
+            "Unknown quiesce override '%s' for container %s — falling back to auto-detect",
+            override_method, container_id,
+        )
+
+    # Auto-detect from image name
     image_lower = image_name.lower()
 
     for fragment, method in _IMAGE_CHECKS:

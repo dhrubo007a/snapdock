@@ -46,9 +46,6 @@ logger = logging.getLogger(__name__)
 
 _PENDING_RESTORE_DIR = Path("/var/lib/snapdock/state/pending_restore")
 
-# Port offset applied to host ports during dry-run restore
-_DRY_RUN_PORT_OFFSET = 10000
-
 
 def _win_to_docker_desktop_path(win_path: str) -> Path | None:
     """Translate a Windows host path to the Docker Desktop Linux mount point.

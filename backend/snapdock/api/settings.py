@@ -8,6 +8,7 @@ the onboarding keys without clashing.
 """
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime
 
@@ -60,6 +61,7 @@ def _build_response(db: Session) -> SettingsResponse:
                                       str(app_settings.health_check_timeout))),
         stop_timeout=int(_get(db, "general.stop_timeout",
                                str(app_settings.stop_timeout))),
+        quiesce_overrides=json.loads(_get(db, "general.quiesce_overrides", "{}")),
     )
 
     wh_raw = _get(db, "notifications.webhook_urls", "")
@@ -83,8 +85,16 @@ def _build_response(db: Session) -> SettingsResponse:
 # Public helper for other modules                                               #
 # --------------------------------------------------------------------------- #
 
+def get_quiesce_overrides(db: Session) -> dict[str, str]:
+    """Return the per-service quiesce override map stored in the DB."""
+    raw = _get(db, "general.quiesce_overrides", "{}")
+    try:
+        return json.loads(raw)
+    except (ValueError, TypeError):
+        return {}
+
+
 def get_notification_config(db: Session) -> dict:
-    """Return notification settings, preferring DB values over env vars."""
     import os
     wh_raw = _get(db, "notifications.webhook_urls",
                   os.getenv("SNAPDOCK_WEBHOOK_URL", ""))
@@ -133,6 +143,7 @@ def patch_settings(
         _set(db, "general.quiesce_timeout",    str(g.quiesce_timeout))
         _set(db, "general.health_check_timeout", str(g.health_check_timeout))
         _set(db, "general.stop_timeout",       str(g.stop_timeout))
+        _set(db, "general.quiesce_overrides",  json.dumps(g.quiesce_overrides))
 
     if body.notifications:
         n = body.notifications

@@ -85,6 +85,8 @@ class DetectedStack:
     compose_config_yaml: str | None = None
     config_hash_match: bool = True
     inferred_reason: str | None = None  # for interconnected groups
+    # Names of other compose stacks that share a network or volume with this one
+    coupled_stacks: list[str] = field(default_factory=list)
 
 
 class ContainerClassifier:
@@ -115,6 +117,10 @@ class ContainerClassifier:
             stacks.append(self._build_compose_stack(project_name, project_containers))
 
         stacks.extend(self._classify_standalone(standalone))
+
+        # Detect cross-project coupling between compose stacks
+        _annotate_cross_project_coupling(stacks)
+
         return stacks
 
     def get_stack(self, name: str) -> DetectedStack | None:
@@ -359,6 +365,47 @@ class ContainerClassifier:
 # --------------------------------------------------------------------------- #
 # Helpers                                                                       #
 # --------------------------------------------------------------------------- #
+
+def _annotate_cross_project_coupling(stacks: list[DetectedStack]) -> None:
+    """Detect cross-project coupling between compose stacks.
+
+    Two compose stacks are considered coupled when any container from one stack
+    shares a user-defined Docker network or a named volume with any container
+    from the other.  Coupling information is stored in each stack's
+    ``coupled_stacks`` list so the API can surface it.
+    """
+    compose_stacks = [s for s in stacks if s.type == "compose"]
+
+    # Pre-compute sets of user-defined networks and named volumes per stack
+    def nets(s: DetectedStack) -> set[str]:
+        result: set[str] = set()
+        for c in s.containers:
+            for net in c.attrs.get("NetworkSettings", {}).get("Networks", {}).keys():
+                if net not in ("bridge", "host", "none"):
+                    result.add(net)
+        return result
+
+    def vols(s: DetectedStack) -> set[str]:
+        result: set[str] = set()
+        for c in s.containers:
+            for m in c.attrs.get("Mounts", []):
+                if m.get("Type") == "volume" and m.get("Name"):
+                    result.add(m["Name"])
+        return result
+
+    net_sets = {s.name: nets(s) for s in compose_stacks}
+    vol_sets = {s.name: vols(s) for s in compose_stacks}
+    stack_by_name = {s.name: s for s in compose_stacks}
+
+    for i, a in enumerate(compose_stacks):
+        for b in compose_stacks[i + 1:]:
+            shared = (net_sets[a.name] & net_sets[b.name]) | (vol_sets[a.name] & vol_sets[b.name])
+            if shared:
+                if b.name not in a.coupled_stacks:
+                    a.coupled_stacks.append(b.name)
+                if a.name not in b.coupled_stacks:
+                    b.coupled_stacks.append(a.name)
+
 
 def _connected_components(
     nodes: list[str], edges: list[tuple[str, str]]

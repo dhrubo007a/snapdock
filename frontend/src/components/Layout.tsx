@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, Archive, Shield, Settings, LogOut, ChevronRight } from 'lucide-react'
+import { LayoutDashboard, Archive, Shield, Settings, LogOut, ChevronRight, ClipboardList } from 'lucide-react'
 import clsx from 'clsx'
 import api from '../lib/api'
 
@@ -7,6 +7,7 @@ const navItems = [
   { to: '/dashboard', label: 'Dashboard', Icon: LayoutDashboard },
   { to: '/snapshots',  label: 'Snapshots',  Icon: Archive },
   { to: '/coverage',  label: 'Coverage',   Icon: Shield },
+  { to: '/audit',     label: 'Audit Log',  Icon: ClipboardList },
   { to: '/settings',  label: 'Settings',   Icon: Settings },
 ]
 

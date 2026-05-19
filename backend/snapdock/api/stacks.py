@@ -80,6 +80,7 @@ def list_stacks(
                 last_verified_at=last_verified.verified_at if last_verified else None,
                 has_schedule=sched is not None and sched.is_active,
                 snapshot_protected=_protected,
+                coupled_stacks=stack.coupled_stacks,
             )
         )
 
@@ -139,4 +140,5 @@ def get_stack(
         last_verified_at=last_verified.verified_at if last_verified else None,
         has_schedule=sched is not None and sched.is_active,
         snapshot_protected=_protected,
+        coupled_stacks=stack.coupled_stacks,
     )

@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import {
   Camera, RefreshCw, Zap, Server, Shield,
-  Clock, Layers, AlertCircle, Radio, CalendarDays, X, Loader2,
+  Clock, Layers, AlertCircle, Radio, CalendarDays, X, Loader2, Link2,
 } from 'lucide-react'
 import clsx from 'clsx'
 import api from '../lib/api'
@@ -214,6 +214,20 @@ function StackCard({ stack }: { stack: StackResponse }) {
             <p className="text-[11px] text-gray-600 mt-1 ml-3">
               {stack.type} · {stack.containers.length} container{stack.containers.length !== 1 ? 's' : ''}
             </p>
+            {stack.coupled_stacks?.length > 0 && (
+              <div className="mt-1.5 ml-3 flex flex-wrap gap-1">
+                {stack.coupled_stacks.map((other) => (
+                  <span
+                    key={other}
+                    title={`Shares a Docker network or volume with "${other}"`}
+                    className="inline-flex items-center gap-1 text-[10px] bg-violet-900/30 text-violet-400 ring-1 ring-violet-500/20 px-1.5 py-0.5 rounded-full"
+                  >
+                    <Link2 size={8} />
+                    {other}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
             {!stack.snapshot_protected && (

@@ -23,7 +23,7 @@
 ---
 
 > [!WARNING]
-> **Hobby project — under active development.** SnapDock is built and maintained in spare time as a personal homelab tool. It may have rough edges, incomplete features, and breaking changes between versions (no semver guarantees yet). Do not rely on it as your sole backup strategy for anything you cannot afford to lose. Test restores. Verify encryption keys are backed up. You have been warned — and the author takes no responsibility for data loss.
+> **Hobby project — under active development.** SnapDock is built and maintained in spare time as a personal homelab tool. It may have rough edges, incomplete features, and breaking changes between versions (no semver guarantees yet). Please test all features to see if they work properly for you before deploying to production. You have been warned. Don't kill this poor dev later for any data loss.
 
 ---
 
@@ -144,9 +144,10 @@ Restoring a snapshot is the operation where you most need to trust the tool.
 SnapDock's restore engine is built around two principles: **verify before
 committing**, and **never leave the stack in a worse state than it started**.
 
-**Dry-run mode** spins up an isolated copy of the stack with all ports offset
-by +10000, restores the snapshot data into it, runs health checks, and reports
-whether the restore is viable — all without touching your live stack or data.
+**Dry-run mode** spins up an isolated copy of the stack with all port bindings
+suppressed (no host ports exposed), restores the snapshot data into it, runs
+health checks, and reports whether the restore is viable — all without touching
+your live stack or data.
 It's a full end-to-end verification that the snapshot is intact, the encryption
 keys are valid, and the containers come up healthy.
 

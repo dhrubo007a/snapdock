@@ -491,6 +491,9 @@ class SnapshotEngine:
     async def _quiesce_all(
         self, stack: clf.DetectedStack, manifest: Manifest
     ) -> None:
+        from snapdock.api.settings import get_quiesce_overrides
+        quiesce_overrides = get_quiesce_overrides(self._db)
+
         svc_map = {svc.name: svc for svc in manifest.services}
         for container in stack.containers:
             svc_name = container.labels.get(
@@ -504,6 +507,7 @@ class SnapshotEngine:
                 container.id,
                 svc_m.image,
                 timeout=self._settings.quiesce_timeout,
+                override_method=quiesce_overrides.get(svc_name),
             )
             svc_m.quiesce = result.method
             svc_m.quiesce_outcome = result.outcome

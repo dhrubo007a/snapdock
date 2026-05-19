@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, type ChangeEvent } from 'react'
 import {
   Lock, Unlock, RotateCcw, CheckCircle, Clock,
   ArrowLeft, Radio, AlertCircle, Trash2, Camera, RefreshCw, Download, Upload,
-  FlaskConical,
+  FlaskConical, GitCompare,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { formatDistanceToNow } from 'date-fns'
@@ -367,6 +367,7 @@ function SnapshotRow({
   } | null>(null)
   const [restoring, setRestoring] = useState(false)
   const [isDryRunning, setIsDryRunning] = useState(false)
+  const [showDiff, setShowDiff] = useState(false)
   const logEndRef = useRef<HTMLDivElement>(null)
 
   // events are newest-first; check index 0 for completion
@@ -436,6 +437,14 @@ function SnapshotRow({
     mutationFn: () =>
       api.patch(`/stacks/${stackName}/snapshots/${snap.id}/lock`, { locked: !snap.locked }),
     onSuccess: onRefresh,
+  })
+
+  const { data: diffData, isFetching: diffLoading } = useQuery<any>({
+    queryKey: ['diff', stackName, snap.id],
+    queryFn: () =>
+      api.get(`/stacks/${stackName}/snapshots/${snap.id}/diff`).then((r) => r.data),
+    enabled: showDiff,
+    staleTime: Infinity,
   })
 
   const deleteSnap = useMutation({
@@ -541,6 +550,19 @@ function SnapshotRow({
               className="p-1.5 rounded-md bg-gray-800 hover:bg-blue-900/60 text-gray-400 hover:text-blue-300 transition-colors disabled:opacity-50"
             >
               <FlaskConical size={11} className={(dryRunMutation.isPending || isDryRunning) ? 'animate-pulse' : ''} />
+            </button>
+            {/* Diff */}
+            <button
+              onClick={() => setShowDiff((v) => !v)}
+              title={showDiff ? 'Hide diff' : 'Compare with previous snapshot'}
+              className={clsx(
+                'p-1.5 rounded-md transition-colors',
+                showDiff
+                  ? 'bg-violet-900/60 text-violet-300'
+                  : 'bg-gray-800 hover:bg-violet-900/60 text-gray-400 hover:text-violet-300',
+              )}
+            >
+              <GitCompare size={11} />
             </button>
             {/* Export */}
             <button
@@ -650,6 +672,116 @@ function SnapshotRow({
                 })}
               </div>
             </div>
+          </td>
+        </tr>
+      )}
+
+      {/* Diff panel */}
+      {showDiff && (
+        <tr>
+          <td colSpan={8} className="px-4 py-4 bg-gray-950/60 border-t border-gray-800">
+            {diffLoading ? (
+              <div className="flex items-center gap-2 text-[11px] text-gray-500 animate-pulse">
+                <RefreshCw size={10} className="animate-spin" />
+                Loading diff…
+              </div>
+            ) : diffData ? (
+              <div className="space-y-4">
+                <div className="text-[11px] font-semibold uppercase tracking-widest text-violet-400 flex items-center gap-2">
+                  <GitCompare size={11} />
+                  Diff vs {diffData.compare_to ?? 'previous snapshot'}
+                </div>
+
+                {/* Image diff */}
+                {diffData.image_diff?.length > 0 && (
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-600 mb-2">Image Changes</p>
+                    <table className="w-full text-[11px]">
+                      <thead><tr className="text-gray-600">
+                        <th className="text-left px-2 py-1">Service</th>
+                        <th className="text-left px-2 py-1">Change</th>
+                        <th className="text-left px-2 py-1">Old Image</th>
+                        <th className="text-left px-2 py-1">New Image</th>
+                      </tr></thead>
+                      <tbody className="divide-y divide-gray-800/30">
+                        {diffData.image_diff.map((d: any, i: number) => (
+                          <tr key={i}>
+                            <td className="px-2 py-1 text-gray-300 font-medium">{d.service}</td>
+                            <td className="px-2 py-1">
+                              <span className={clsx(
+                                'text-[10px] px-1.5 py-0.5 rounded-full',
+                                d.change === 'updated' ? 'bg-blue-900/40 text-blue-300' :
+                                d.change === 'added'   ? 'bg-green-900/40 text-green-300' :
+                                                         'bg-red-900/40 text-red-300',
+                              )}>{d.change}</span>
+                            </td>
+                            <td className="px-2 py-1 font-mono text-gray-500 max-w-[180px] truncate">{d.old_image ?? '—'}</td>
+                            <td className="px-2 py-1 font-mono text-gray-400 max-w-[180px] truncate">{d.new_image ?? '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* Config diff */}
+                {diffData.config_diff?.length > 0 && (
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-600 mb-2">Config Changes</p>
+                    {diffData.config_diff.map((d: any, i: number) => (
+                      <div key={i} className="mb-2">
+                        <p className="text-[11px] text-gray-400 font-mono mb-1">{d.file} <span className="text-gray-600">({d.change})</span></p>
+                        {d.unified_diff && (
+                          <pre className="text-[10px] font-mono bg-gray-900 rounded p-2 overflow-x-auto max-h-36 leading-relaxed no-scrollbar">
+                            {d.unified_diff.split('\n').map((line: string, j: number) => (
+                              <div key={j} className={
+                                line.startsWith('+') ? 'text-green-400' :
+                                line.startsWith('-') ? 'text-red-400' :
+                                line.startsWith('@') ? 'text-blue-400' : 'text-gray-500'
+                              }>{line}</div>
+                            ))}
+                          </pre>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Volume diff */}
+                {diffData.volume_diff?.length > 0 && (
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-600 mb-2">Volume Changes</p>
+                    <div className="space-y-1">
+                      {diffData.volume_diff.map((d: any, i: number) => (
+                        <div key={i} className="flex items-start gap-3 text-[11px]">
+                          <span className="font-mono text-gray-400 shrink-0">{d.volume}</span>
+                          <span className={clsx(
+                            'text-[10px] px-1.5 py-0.5 rounded-full shrink-0',
+                            d.change === 'modified' ? 'bg-yellow-900/40 text-yellow-300' :
+                            d.change === 'added'    ? 'bg-green-900/40 text-green-300' :
+                                                      'bg-red-900/40 text-red-300',
+                          )}>{d.change}</span>
+                          {(d.added?.length > 0 || d.removed?.length > 0) && (
+                            <span className="text-gray-600">
+                              {d.added?.length > 0 && <span className="text-green-500">+{d.added.length}</span>}
+                              {d.added?.length > 0 && d.removed?.length > 0 && ' '}
+                              {d.removed?.length > 0 && <span className="text-red-400">-{d.removed.length}</span>}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* No changes */}
+                {!diffData.image_diff?.length && !diffData.config_diff?.length && !diffData.volume_diff?.length && (
+                  <p className="text-[12px] text-gray-600 italic">No differences found between these snapshots.</p>
+                )}
+              </div>
+            ) : (
+              <p className="text-[12px] text-gray-600">No diff available — this may be the first snapshot.</p>
+            )}
           </td>
         </tr>
       )}

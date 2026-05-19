@@ -1,6 +1,7 @@
+import { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeft, Download } from 'lucide-react'
+import { ArrowLeft, Download, ChevronDown, ChevronRight, CheckCircle, XCircle, AlertCircle, HardDrive, Cpu, FileText } from 'lucide-react'
 import clsx from 'clsx'
 import { formatDistanceToNow } from 'date-fns'
 import api from '../lib/api'
@@ -15,6 +16,27 @@ const STATE_BADGE: Record<string, string> = {
   BROKEN:   'bg-red-500/10 text-red-400 ring-1 ring-red-500/20',
 }
 
+const OUTCOME_ICON = {
+  ok:      <CheckCircle size={11} className="text-green-400 shrink-0" />,
+  failed:  <XCircle size={11} className="text-red-400 shrink-0" />,
+  skipped: <AlertCircle size={11} className="text-gray-500 shrink-0" />,
+}
+
+function fmt(bytes: number | null | undefined) {
+  if (!bytes) return '—'
+  if (bytes >= 1048576) return `${(bytes / 1048576).toFixed(1)} MB`
+  return `${(bytes / 1024).toFixed(1)} KB`
+}
+
+function SectionHeader({ title, icon: Icon }: { title: string; icon: React.ElementType }) {
+  return (
+    <div className="px-5 py-3 border-b border-gray-800 flex items-center gap-2">
+      <Icon size={13} className="text-gray-500" />
+      <h2 className="text-[11px] font-semibold uppercase tracking-widest text-gray-500">{title}</h2>
+    </div>
+  )
+}
+
 function FieldSkeleton() {
   return (
     <div className="animate-pulse space-y-1.5">
@@ -26,6 +48,7 @@ function FieldSkeleton() {
 
 export default function SnapshotInspectorPage() {
   const { stackName, snapshotId } = useParams<{ stackName: string; snapshotId: string }>()
+  const [rawOpen, setRawOpen] = useState(false)
 
   const { data: snap, isLoading, error } = useQuery<SnapshotResponse>({
     queryKey: ['snapshot', stackName, snapshotId],
@@ -33,7 +56,7 @@ export default function SnapshotInspectorPage() {
       api.get(`/stacks/${stackName}/snapshots/${snapshotId}`).then((r) => r.data),
   })
 
-  const { data: manifest } = useQuery({
+  const { data: manifest } = useQuery<any>({
     queryKey: ['manifest', stackName, snapshotId],
     queryFn: () =>
       api.get(`/stacks/${stackName}/snapshots/${snapshotId}/manifest`).then((r) => r.data),
@@ -118,23 +141,145 @@ export default function SnapshotInspectorPage() {
         ) : null}
       </div>
 
-      {/* Manifest */}
+      {/* Services */}
+      {manifest?.services?.length > 0 && (
+        <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+          <SectionHeader title="Services" icon={Cpu} />
+          <div className="overflow-x-auto">
+            <table className="w-full text-[12px]">
+              <thead className="bg-gray-900/80">
+                <tr>
+                  {['Service', 'Image', 'Quiesce', 'Pre-hook', 'Post-hook'].map((h) => (
+                    <th key={h} className="px-4 py-2 text-left text-[10px] font-semibold uppercase tracking-widest text-gray-600">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-800/50">
+                {manifest.services.map((svc: any) => (
+                  <tr key={svc.name} className="hover:bg-gray-800/20">
+                    <td className="px-4 py-2 font-medium text-gray-200">{svc.name}</td>
+                    <td className="px-4 py-2 font-mono text-gray-400 max-w-[240px] truncate">{svc.image}</td>
+                    <td className="px-4 py-2">
+                      {svc.quiesce ? (
+                        <span className="flex items-center gap-1.5">
+                          {OUTCOME_ICON[svc.quiesce_outcome as keyof typeof OUTCOME_ICON] ?? OUTCOME_ICON.skipped}
+                          <span className="text-gray-400">{svc.quiesce}</span>
+                        </span>
+                      ) : <span className="text-gray-700">—</span>}
+                    </td>
+                    <td className="px-4 py-2">
+                      {svc.pre_hook ? (
+                        <span className="flex items-center gap-1.5">
+                          {OUTCOME_ICON[svc.pre_hook_outcome as keyof typeof OUTCOME_ICON] ?? OUTCOME_ICON.skipped}
+                          <span className="text-gray-500 font-mono text-[10px] truncate max-w-[120px]">{svc.pre_hook}</span>
+                        </span>
+                      ) : <span className="text-gray-700">—</span>}
+                    </td>
+                    <td className="px-4 py-2">
+                      {svc.post_hook ? (
+                        <span className="flex items-center gap-1.5">
+                          {OUTCOME_ICON[svc.post_hook_outcome as keyof typeof OUTCOME_ICON] ?? OUTCOME_ICON.skipped}
+                          <span className="text-gray-500 font-mono text-[10px] truncate max-w-[120px]">{svc.post_hook}</span>
+                        </span>
+                      ) : <span className="text-gray-700">—</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Volume Inventory */}
+      {manifest?.volumes?.length > 0 && (
+        <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+          <SectionHeader title="Volume Inventory" icon={HardDrive} />
+          <div className="overflow-x-auto">
+            <table className="w-full text-[12px]">
+              <thead className="bg-gray-900/80">
+                <tr>
+                  {['Volume', 'Type', 'Service', 'Mount Path', 'Size', 'Captured'].map((h) => (
+                    <th key={h} className="px-4 py-2 text-left text-[10px] font-semibold uppercase tracking-widest text-gray-600">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-800/50">
+                {manifest.volumes.map((vol: any, i: number) => (
+                  <tr key={i} className="hover:bg-gray-800/20">
+                    <td className="px-4 py-2 font-mono text-gray-400 max-w-[160px] truncate">
+                      {vol.name ?? vol.id?.slice(0, 12) ?? vol.host_path ?? '—'}
+                    </td>
+                    <td className="px-4 py-2">
+                      <span className="text-[10px] bg-gray-800 text-gray-400 px-2 py-0.5 rounded-full">{vol.type}</span>
+                    </td>
+                    <td className="px-4 py-2 text-gray-300">{vol.service}</td>
+                    <td className="px-4 py-2 font-mono text-gray-500 text-[11px]">{vol.mount_path}</td>
+                    <td className="px-4 py-2 text-gray-500 whitespace-nowrap">{fmt(vol.size_bytes)}</td>
+                    <td className="px-4 py-2">
+                      {vol.type === 'tmpfs'
+                        ? <span className="text-gray-600 text-[10px]">in-memory</span>
+                        : vol.captured
+                          ? <CheckCircle size={12} className="text-green-500" />
+                          : <XCircle size={12} className="text-red-400" />}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Diagnostics */}
+      {manifest?.diagnostics && (
+        <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+          <SectionHeader title="Diagnostics Capture" icon={FileText} />
+          <div className="px-5 py-4 grid grid-cols-2 md:grid-cols-4 gap-4">
+            <DiagField label="Log files" value={String(manifest.diagnostics.log_files?.length ?? 0)} />
+            <DiagField label="Inspect files" value={String(manifest.diagnostics.inspect_files?.length ?? 0)} />
+            <DiagField label="Hook log files" value={String(manifest.diagnostics.hook_log_files?.length ?? 0)} />
+            <DiagField
+              label="Captured"
+              value={manifest.diagnostics.captured ? 'Yes' : 'No'}
+              highlight={manifest.diagnostics.captured}
+            />
+          </div>
+          {manifest.diagnostics.log_files?.length > 0 && (
+            <div className="px-5 pb-4 space-y-1">
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-600 mb-2">Captured files</p>
+              <div className="flex flex-wrap gap-1.5">
+                {[...manifest.diagnostics.log_files, ...manifest.diagnostics.inspect_files, ...manifest.diagnostics.hook_log_files].map((f: string, i: number) => (
+                  <span key={i} className="font-mono text-[10px] bg-gray-800 text-gray-400 px-2 py-0.5 rounded">{f}</span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Raw manifest (collapsible) */}
       {manifest && (
         <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
-          <div className="px-5 py-3 border-b border-gray-800 flex items-center justify-between">
-            <h2 className="text-[11px] font-semibold uppercase tracking-widest text-gray-500">Manifest</h2>
-            <span className="text-[10px] text-gray-600">JSON</span>
-          </div>
-          <pre className="p-5 text-[11px] text-gray-300 overflow-x-auto leading-relaxed no-scrollbar">
-            {JSON.stringify(manifest, null, 2)}
-          </pre>
+          <button
+            onClick={() => setRawOpen((v) => !v)}
+            className="w-full px-5 py-3 flex items-center justify-between text-left hover:bg-gray-800/30 transition-colors"
+          >
+            <span className="text-[11px] font-semibold uppercase tracking-widest text-gray-500">Raw Manifest JSON</span>
+            {rawOpen ? <ChevronDown size={13} className="text-gray-600" /> : <ChevronRight size={13} className="text-gray-600" />}
+          </button>
+          {rawOpen && (
+            <pre className="p-5 text-[11px] text-gray-300 overflow-x-auto leading-relaxed no-scrollbar border-t border-gray-800">
+              {JSON.stringify(manifest, null, 2)}
+            </pre>
+          )}
         </div>
       )}
     </div>
   )
 }
 
-// ── Field helper ──────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 function Field({
   label,
   value,
@@ -154,6 +299,15 @@ function Field({
           {value}
         </p>
       )}
+    </div>
+  )
+}
+
+function DiagField({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
+  return (
+    <div>
+      <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-600 mb-1">{label}</p>
+      <p className={clsx('text-[13px] font-medium', highlight ? 'text-green-400' : 'text-gray-300')}>{value}</p>
     </div>
   )
 }

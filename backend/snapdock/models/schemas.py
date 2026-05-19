@@ -94,7 +94,7 @@ class StackResponse(BaseModel):
     last_verified_at: datetime | None
     has_schedule: bool
     snapshot_protected: bool = False  # True when this stack contains the SnapDock daemon itself
-    snapshot_protected: bool = False  # True when this stack contains the SnapDock daemon
+    coupled_stacks: list[str] = []   # other compose stacks sharing a network/volume with this one
 
 
 # --------------------------------------------------------------------------- #
@@ -204,6 +204,10 @@ class SettingsGeneral(BaseModel):
     quiesce_timeout: int = Field(30, ge=5, le=300)
     health_check_timeout: int = Field(120, ge=10, le=600)
     stop_timeout: int = Field(30, ge=5, le=300)
+    # Per-service quiesce method overrides: {service_name: method}
+    # Valid methods: auto | postgresql_checkpoint | mysql_flush_tables |
+    #                redis_bgsave | mongodb_fsynclock | skip
+    quiesce_overrides: dict[str, str] = Field(default_factory=dict)
 
 
 class SettingsNotificationsRead(BaseModel):

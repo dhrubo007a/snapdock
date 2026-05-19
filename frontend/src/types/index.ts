@@ -16,6 +16,7 @@ export interface StackResponse {
   snapshot_protected: boolean
   last_snapshot_at: string | null
   last_verified_at: string | null
+  coupled_stacks: string[]
 }
 
 export interface SnapshotResponse {

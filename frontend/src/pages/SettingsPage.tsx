@@ -3,8 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Settings, Users, Bell, Shield, Plus, Pencil, Trash2,
   KeyRound, Eye, EyeOff, X, Check, AlertCircle, Loader2, Copy,
-} from 'lucide-react'
-import clsx from 'clsx'
+} from 'lucide-react'import clsx from 'clsx'
 import api from '../lib/api'
 import Modal from '../components/Modal'
 
@@ -15,6 +14,7 @@ interface SettingsGeneral {
   quiesce_timeout: number
   health_check_timeout: number
   stop_timeout: number
+  quiesce_overrides: Record<string, string>
 }
 
 interface SettingsNotificationsRead {
@@ -97,12 +97,27 @@ function Toast({ message, type }: { message: string; type: 'success' | 'error' }
 
 // ── General Settings Tab ───────────────────────────────────────────────────
 
+const QUIESCE_METHODS = [
+  { value: 'auto',                    label: 'Auto-detect (default)' },
+  { value: 'postgresql_checkpoint',   label: 'PostgreSQL — CHECKPOINT' },
+  { value: 'mysql_flush_tables',      label: 'MySQL / MariaDB — FLUSH TABLES' },
+  { value: 'redis_bgsave',            label: 'Redis — BGSAVE' },
+  { value: 'mongodb_fsynclock',       label: 'MongoDB — fsyncLock' },
+  { value: 'skip',                    label: 'Skip (no quiesce)' },
+]
+
 function GeneralTab({ data }: { data: SettingsResponse }) {
   const qc = useQueryClient()
   const [form, setForm] = useState<SettingsGeneral>(data.general)
+  const [overrideRows, setOverrideRows] = useState<{ service: string; method: string }[]>(
+    () => Object.entries(data.general.quiesce_overrides ?? {}).map(([service, method]) => ({ service, method }))
+  )
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
 
-  useEffect(() => { setForm(data.general) }, [data.general])
+  useEffect(() => {
+    setForm(data.general)
+    setOverrideRows(Object.entries(data.general.quiesce_overrides ?? {}).map(([service, method]) => ({ service, method })))
+  }, [data.general])
 
   const showToast = (msg: string, type: 'success' | 'error') => {
     setToast({ msg, type })
@@ -110,12 +125,17 @@ function GeneralTab({ data }: { data: SettingsResponse }) {
   }
 
   const save = useMutation({
-    mutationFn: () => api.patch('/settings', { general: form }),
+    mutationFn: () => {
+      const quiesce_overrides = Object.fromEntries(
+        overrideRows.filter((r) => r.service.trim()).map((r) => [r.service.trim(), r.method])
+      )
+      return api.patch('/settings', { general: { ...form, quiesce_overrides } })
+    },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['settings'] }); showToast('Settings saved', 'success') },
     onError: () => showToast('Failed to save settings', 'error'),
   })
 
-  function field(key: keyof SettingsGeneral, label: string, unit: string) {
+  function field(key: keyof Omit<SettingsGeneral, 'quiesce_overrides'>, label: string, unit: string) {
     return (
       <div>
         <Label>{label}</Label>
@@ -123,7 +143,7 @@ function GeneralTab({ data }: { data: SettingsResponse }) {
           <Input
             type="number"
             min={1}
-            value={form[key]}
+            value={form[key] as number}
             onChange={(e) => setForm({ ...form, [key]: Number(e.target.value) })}
             className="w-32"
           />
@@ -148,6 +168,54 @@ function GeneralTab({ data }: { data: SettingsResponse }) {
           {field('health_check_timeout', 'Health-check timeout', 'seconds')}
           {field('stop_timeout', 'Stop timeout', 'seconds')}
         </div>
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h3 className="text-[13px] font-semibold text-gray-200">Quiesce Overrides</h3>
+            <p className="text-[11px] text-gray-600 mt-0.5">
+              Force a specific quiesce method per service instead of auto-detecting from the image name.
+            </p>
+          </div>
+          <Btn
+            variant="ghost"
+            onClick={() => setOverrideRows((r) => [...r, { service: '', method: 'auto' }])}
+          >
+            <Plus size={11} /> Add
+          </Btn>
+        </div>
+        {overrideRows.length === 0 ? (
+          <p className="text-[12px] text-gray-700 italic">No overrides configured — all services use auto-detection.</p>
+        ) : (
+          <div className="space-y-2">
+            {overrideRows.map((row, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <Input
+                  value={row.service}
+                  onChange={(e) => setOverrideRows((rs) => rs.map((r, j) => j === i ? { ...r, service: e.target.value } : r))}
+                  placeholder="service name"
+                  className="flex-1"
+                />
+                <select
+                  value={row.method}
+                  onChange={(e) => setOverrideRows((rs) => rs.map((r, j) => j === i ? { ...r, method: e.target.value } : r))}
+                  className="bg-gray-900 border border-gray-700 text-gray-200 rounded-lg px-2 py-2 text-[12px] focus:outline-none focus:ring-2 focus:ring-brand-500/40"
+                >
+                  {QUIESCE_METHODS.map((m) => (
+                    <option key={m.value} value={m.value}>{m.label}</option>
+                  ))}
+                </select>
+                <button
+                  onClick={() => setOverrideRows((rs) => rs.filter((_, j) => j !== i))}
+                  className="p-1.5 rounded-md bg-gray-800 hover:bg-red-900/50 text-gray-500 hover:text-red-400 transition-colors"
+                >
+                  <X size={11} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <Btn onClick={() => save.mutate()} loading={save.isPending}>
