@@ -4,12 +4,12 @@ import { useState, useEffect, useRef, type ChangeEvent } from 'react'
 import {
   Lock, Unlock, RotateCcw, CheckCircle, Clock,
   ArrowLeft, Radio, AlertCircle, Trash2, Camera, RefreshCw, Download, Upload,
-  FlaskConical, GitCompare,
+  FlaskConical, GitCompare, XCircle,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { formatDistanceToNow } from 'date-fns'
 import api from '../lib/api'
-import type { SnapDockEvent, SnapshotResponse, StackResponse } from '../types'
+import type { ActiveDryRunInfo, SnapDockEvent, SnapshotResponse, StackResponse } from '../types'
 import { useEventStream } from '../hooks/useEventStream'
 import Modal from '../components/Modal'
 
@@ -133,6 +133,24 @@ export default function SnapshotHistoryPage() {
     refetchInterval: 10_000,
   })
 
+  const { data: activeDryRun } = useQuery<ActiveDryRunInfo | null>({
+    queryKey: ['dry-run', stackName],
+    queryFn: () =>
+      api.get(`/stacks/${stackName}/dry-run`)
+        .then((r) => r.data as ActiveDryRunInfo)
+        .catch((err) => {
+          if (err?.response?.status === 404) return null
+          throw err
+        }),
+    refetchInterval: 15_000,
+    retry: false,
+  })
+
+  const teardownMutation = useMutation({
+    mutationFn: () => api.delete(`/stacks/${stackName}/dry-run`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['dry-run', stackName] }),
+  })
+
   const triggerSnap = useMutation({
     mutationFn: () => api.post(`/stacks/${stackName}/snapshots`, { label: snapLabel.trim() || undefined }),
     onSuccess: () => {
@@ -227,6 +245,60 @@ export default function SnapshotHistoryPage() {
       {/* Live stack status */}
       <StackStatusPane stackName={stackName!} />
 
+      {/* Active dry-run banner */}
+      {activeDryRun && (
+        <div className="rounded-xl border border-blue-700/50 bg-blue-950/30 overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-2.5 border-b border-blue-800/40">
+            <div className="flex items-center gap-2">
+              <FlaskConical size={13} className="text-blue-400 animate-pulse" />
+              <span className="text-[11px] font-semibold uppercase tracking-widest text-blue-400">
+                Dry-Run Active
+              </span>
+              <span className="text-[11px] text-blue-600 font-mono ml-1">
+                {activeDryRun.snapshot_id}
+              </span>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-[11px] text-blue-600">
+                Expires {formatDistanceToNow(parseUTC(activeDryRun.expires_at), { addSuffix: true })}
+              </span>
+              <button
+                onClick={() => teardownMutation.mutate()}
+                disabled={teardownMutation.isPending}
+                className="flex items-center gap-1.5 px-3 py-1 text-[11px] font-medium rounded-lg bg-red-900/40 hover:bg-red-900/70 text-red-400 hover:text-red-300 transition-colors disabled:opacity-50"
+              >
+                {teardownMutation.isPending
+                  ? <RefreshCw size={10} className="animate-spin" />
+                  : <XCircle size={10} />}
+                Shut Down
+              </button>
+            </div>
+          </div>
+          {Object.keys(activeDryRun.dry_run_ports).length > 0 && (
+            <div className="px-4 py-3">
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-blue-600 mb-2">
+                Preview URLs
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {Object.entries(activeDryRun.dry_run_ports).flatMap(([svc, bindings]) =>
+                  bindings.map((b, i) => (
+                    <a
+                      key={`${svc}-${i}`}
+                      href={`http://localhost:${b.host_port}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[11px] font-mono px-2.5 py-1 rounded-lg bg-blue-900/40 text-blue-300 hover:text-blue-100 hover:bg-blue-900/70 transition-colors border border-blue-800/40"
+                    >
+                      {svc}:{b.container_port} → :{b.host_port}
+                    </a>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Error */}
       {error && (
         <div className="flex items-center gap-2 text-red-400 bg-red-950/20 border border-red-900/50 rounded-xl p-3 text-sm">
@@ -295,6 +367,7 @@ export default function SnapshotHistoryPage() {
                       snap={snap}
                       stackName={stackName!}
                       onRefresh={refresh}
+                      onDryRunComplete={() => qc.invalidateQueries({ queryKey: ['dry-run', stackName] })}
                   events={events}
                     />
                   ))}
@@ -350,11 +423,12 @@ export default function SnapshotHistoryPage() {
 
 // ── Row ───────────────────────────────────────────────────────────────────────
 function SnapshotRow({
-  snap, stackName, onRefresh, events,
+  snap, stackName, onRefresh, onDryRunComplete, events,
 }: {
   snap: SnapshotResponse
   stackName: string
   onRefresh: () => void
+  onDryRunComplete: () => void
   events: SnapDockEvent[]
 }) {
   const restoreEvents = events.filter(
@@ -393,7 +467,8 @@ function SnapshotRow({
 
   useEffect(() => {
     if (!dryRunDone) return
-    const t = setTimeout(() => setIsDryRunning(false), 3000)
+    onDryRunComplete()
+    const t = setTimeout(() => setIsDryRunning(false), 5000)
     return () => clearTimeout(t)
   }, [dryRunDone])
 

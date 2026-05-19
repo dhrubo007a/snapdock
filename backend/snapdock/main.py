@@ -20,6 +20,7 @@ from snapdock.api import diff as diff_api
 from snapdock.api import transfer as transfer_api
 from snapdock.api.ws import router as ws_router
 from snapdock.config import settings
+from snapdock.core import dry_run_registry
 from snapdock.database import AuditLog, RevokedToken, Schedule, SessionLocal, Snapshot, SystemConfig, User, init_db
 from snapdock.docker_client import get_docker_client
 from snapdock.events import event_bus
@@ -90,11 +91,17 @@ async def lifespan(app: FastAPI):
     # Start Docker event watcher background task
     watcher_task = asyncio.create_task(_docker_event_watcher())
     cleanup_task = asyncio.create_task(_cleanup_revoked_tokens())
+    dry_run_ttl_task = asyncio.create_task(_dry_run_ttl_cleanup())
 
     logger.info("SnapDock daemon ready on %s:%d", settings.host, settings.port)
     yield
 
     # Shutdown
+    dry_run_ttl_task.cancel()
+    try:
+        await dry_run_ttl_task
+    except asyncio.CancelledError:
+        pass
     cleanup_task.cancel()
     try:
         await cleanup_task
@@ -142,6 +149,7 @@ def create_app() -> FastAPI:
     app.include_router(stacks.router)
     app.include_router(snapshots.router)
     app.include_router(restore.router)
+    app.include_router(restore.dry_run_router)
     app.include_router(audit.router)
     app.include_router(coverage.router)
     app.include_router(users.router)
@@ -241,6 +249,49 @@ async def _cleanup_revoked_tokens() -> None:
             raise
         except Exception as exc:
             logger.warning("Revoked-token cleanup error: %s", exc)
+
+
+async def _dry_run_ttl_cleanup() -> None:
+    """Every 5 minutes: tear down dry-run environments whose TTL has expired."""
+    while True:
+        try:
+            await asyncio.sleep(300)
+            expired = dry_run_registry.list_expired()
+            for entry in expired:
+                # Re-confirm entry is still registered (may have been manually removed)
+                current = dry_run_registry.get(entry.stack_name)
+                if current is None or current.expires_at != entry.expires_at:
+                    continue
+                dry_run_registry.remove(entry.stack_name)
+                try:
+                    with SessionLocal() as db:
+                        snap = db.query(Snapshot).filter_by(id=entry.snapshot_id).first()
+                        if snap and snap.manifest_path:
+                            from pathlib import Path as _Path
+                            mp = _Path(snap.manifest_path)
+                            if mp.exists():
+                                from snapdock.models.manifest import Manifest as _Manifest
+                                from snapdock.core.restore import RestoreEngine as _RE
+                                docker = get_docker_client()
+                                engine = _RE(docker, db, event_bus, settings)
+                                engine._teardown_dry_run(_Manifest.load(mp), entry.restore_suffix)
+                        db.add(AuditLog(
+                            actor="system",
+                            action="RESTORE_DRYRUN_TEARDOWN",
+                            target_stack=entry.stack_name,
+                            target_snapshot=entry.snapshot_id,
+                            outcome="SUCCESS",
+                            detail="TTL expired",
+                        ))
+                        db.commit()
+                except Exception as exc:
+                    logger.warning(
+                        "TTL cleanup failed for dry-run %s: %s", entry.snapshot_id, exc
+                    )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning("Dry-run TTL cleanup error: %s", exc)
 
 
 async def _crash_recovery() -> None:

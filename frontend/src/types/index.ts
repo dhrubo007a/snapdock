@@ -63,3 +63,18 @@ export interface SnapDockEvent {
   timestamp?: string
   data?: Record<string, any>
 }
+
+export interface DryRunPortBinding {
+  host_port: number
+  container_port: number
+  protocol: string
+}
+
+export interface ActiveDryRunInfo {
+  snapshot_id: string
+  stack_name: string
+  restore_suffix: string
+  dry_run_ports: Record<string, DryRunPortBinding[]>
+  started_at: string
+  expires_at: string
+}

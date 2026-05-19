@@ -152,11 +152,13 @@ name, restores the snapshot data into it, runs health checks, and reports
 whether the restore is viable, all without touching your live stack or data.
 Containers bind to **ephemeral host ports** chosen automatically by Docker,
 so there are no conflicts with the running live stack. Once the dry-run
-completes, the UI surfaces clickable **preview URLs** for every exposed service
+completes, the UI surfaces an **Active Dry-Run banner** at the top of the
+Snapshot History page, with clickable **preview URLs** for every exposed service
 port so you can actually browse the restored stack before committing.
 It's a full end-to-end verification that the snapshot is intact, the encryption
-keys are valid, and the containers come up healthy. The isolated environment is
-torn down automatically after inspection.
+keys are valid, and the containers come up healthy. The isolated environment
+**remains live** until you explicitly click **Shut Down** in the banner, or
+until the 60-minute TTL expires and the daemon tears it down automatically.
 
 **Full restore** requires explicit confirmation. The UI calculates and displays
 the exact data loss window: *"Data changed since snapshot was finalized (approx

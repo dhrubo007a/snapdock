@@ -153,6 +153,21 @@ class RestoreRequest(BaseModel):
     dry_run: bool = False
 
 
+class DryRunPortBinding(BaseModel):
+    host_port: int
+    container_port: int
+    protocol: str
+
+
+class ActiveDryRunResponse(BaseModel):
+    snapshot_id: str
+    stack_name: str
+    restore_suffix: str
+    dry_run_ports: dict[str, list[DryRunPortBinding]]
+    started_at: datetime
+    expires_at: datetime
+
+
 # --------------------------------------------------------------------------- #
 # Schedule                                                                      #
 # --------------------------------------------------------------------------- #

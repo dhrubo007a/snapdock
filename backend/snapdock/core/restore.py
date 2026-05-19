@@ -29,6 +29,7 @@ import docker.errors
 from snapdock.config import Settings
 from snapdock.core import classifier as clf
 from snapdock.core.crypto import decrypt_file
+from snapdock.core import dry_run_registry
 from snapdock.core.health import check_stack_health
 from snapdock.core.volume import (
     restore_anonymous_volume,
@@ -269,8 +270,21 @@ class RestoreEngine:
                     snap_id, stack_name, "restore.step",
                     f"Dry-run stack is live on ephemeral ports: {port_summary}", "ok",
                 )
-            await self._emit(snap_id, stack_name, "restore.step", "Tearing down dry-run environment…", "running")
-            await asyncio.to_thread(self._teardown_dry_run, manifest, restore_suffix)
+            # Register the live dry-run environment so the user can browse
+            # preview URLs and explicitly shut it down via the API.
+            dry_run_registry.register(
+                dry_run_registry.DryRunEntry(
+                    snapshot_id=snap_id,
+                    stack_name=stack_name,
+                    restore_suffix=restore_suffix,
+                    dry_run_ports=dry_run_ports,
+                )
+            )
+            await self._emit(
+                snap_id, stack_name, "restore.step",
+                "Dry-run environment is live. Browse the preview URLs, "
+                "then shut it down from the dashboard when done.", "ok",
+            )
 
         # ── Steps 15-17: Notify, audit, complete ─────────────────────── #
         await self._emit(
