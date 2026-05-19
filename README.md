@@ -130,7 +130,10 @@ container:
 
 Database type is auto-detected from the container image name. No configuration
 required for standard images. For custom images, the quiesce method can be
-overridden per-service in settings.
+**overridden per-service** in Settings → General → Quiesce Overrides. Each
+service entry accepts one of: `auto` (default detection), `postgresql_checkpoint`,
+`mysql_flush_tables`, `redis_bgsave`, `mongodb_fsynclock`, or `skip` (bypass
+quiescing entirely for that service).
 
 The quiesce timeout is configurable (`SNAPDOCK_QUIESCE_TIMEOUT`, default 30s).
 If quiescing times out, the snapshot is aborted rather than captured in an
@@ -144,12 +147,16 @@ Restoring a snapshot is the operation where you most need to trust the tool.
 SnapDock's restore engine is built around two principles: **verify before
 committing**, and **never leave the stack in a worse state than it started**.
 
-**Dry-run mode** spins up an isolated copy of the stack with all port bindings
-suppressed (no host ports exposed), restores the snapshot data into it, runs
-health checks, and reports whether the restore is viable — all without touching
-your live stack or data.
+**Dry-run mode** spins up an isolated copy of the stack under a suffixed project
+name, restores the snapshot data into it, runs health checks, and reports
+whether the restore is viable — all without touching your live stack or data.
+Containers bind to **ephemeral host ports** chosen automatically by Docker,
+so there are no conflicts with the running live stack. Once the dry-run
+completes, the UI surfaces clickable **preview URLs** for every exposed service
+port so you can actually browse the restored stack before committing.
 It's a full end-to-end verification that the snapshot is intact, the encryption
-keys are valid, and the containers come up healthy.
+keys are valid, and the containers come up healthy. The isolated environment is
+torndown automatically after inspection.
 
 **Full restore** requires explicit confirmation. The UI calculates and displays
 the exact data loss window: *"Data changed since snapshot was finalized (approx
@@ -264,24 +271,34 @@ without polling.
 
 **Dashboard** — At a glance: total stacks, healthy count, issue count, scheduled
 count. Stacks are grouped by health state (CLEAN / DEGRADED / BROKEN) with
-per-stack last-snapshot timestamps and quick-action buttons.
+per-stack last-snapshot timestamps and quick-action buttons. Stacks that share
+user-defined networks or named volumes with another compose project are
+automatically annotated with **cross-project coupling badges** so you know which
+stacks need to be snapshotted together for a consistent restore.
 
 **Snapshot History** — Per-stack timeline of all snapshots. State badges,
 container statuses, timestamps, lock indicators, and one-click actions for
-snapshot, restore, dry-run, lock, export, and delete.
+snapshot, restore, dry-run, lock, export, and delete. Each row has an inline
+**diff panel** that compares image versions, config changes, and volume size
+delta against the previous snapshot.
 
-**Snapshot Inspector** — Deep-dive into a single snapshot: full manifest viewer,
-volume inventory with mount paths, and the diagnostics bundle (container logs,
-`docker inspect` output, Docker events from the capture window). Useful for
-understanding exactly what was captured and why a snapshot was taken in a
-particular health state.
+**Snapshot Inspector** — Deep-dive into a single snapshot: **Services table**
+(per-service image, quiesce method + outcome, pre/post hook outcomes), **Volume
+Inventory** (name, type, mount path, captured size), **Diagnostics Capture**
+(log file list, inspect files), and a collapsible raw manifest JSON view.
+
+**Audit Log** — Admin-only chronological log of every state-changing action:
+snapshots taken, restores run, schedules changed, users created, API keys issued,
+snapshots deleted. Filterable by stack name and paginated. Full CSV export for
+compliance records.
 
 **Coverage Dashboard** — Compliance view: which stacks have a recent snapshot
 (Protected), which are overdue, and which have never been snapshotted
 (Unprotected). Gives you the "snapshot hygiene" picture at a glance.
 
 **Settings** — API key generation (shown once, copy it), API key revocation,
-password change, and admin-level global configuration.
+password change, webhook configuration, and admin-level global configuration
+including per-service quiesce method overrides.
 
 ---
 
