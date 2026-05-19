@@ -10,7 +10,7 @@ pipeline {
     agent any
 
     environment {
-        SNAPDOCK_URL     = 'http://snapdock:8050'          // adjust to your host
+        SNAPDOCK_URL     = 'http://snapdock:8000'          // adjust to your host
         SNAPDOCK_API_KEY = credentials('snapdock-api-key') // Jenkins secret-text credential
         STACK_NAME       = 'myapp'
     }

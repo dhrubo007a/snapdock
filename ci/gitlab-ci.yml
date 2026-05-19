@@ -8,7 +8,7 @@
 #   STACK_NAME        Docker Compose stack name SnapDock should manage
 
 variables:
-  SNAPDOCK_URL: "http://snapdock:8050"        # override per-project if needed
+  SNAPDOCK_URL: "http://snapdock:8000"        # override per-project if needed
   STACK_NAME: "myapp"
 
 stages:
