@@ -19,7 +19,7 @@ stages:
 
 # ── Helper: install the SnapDock CLI ───────────────────────────────────────────
 .snapdock_setup: &snapdock_setup |
-  pip install --quiet snapdock-cli
+  pip install --quiet git+https://github.com/dhrubo007a/snapdock.git#subdirectory=cli
 
 # ── 1. Pre-deploy snapshot ─────────────────────────────────────────────────────
 # Captures the current running state before any changes are made.

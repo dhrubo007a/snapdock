@@ -21,7 +21,7 @@ pipeline {
         stage('Pre-Deploy Snapshot') {
             steps {
                 sh '''
-                    pip install --quiet snapdock-cli
+                    pip install --quiet git+https://github.com/dhrubo007a/snapdock.git#subdirectory=cli
                     SNAP_ID=$(snapdock snapshot "$STACK_NAME" \
                         --label "pre-deploy-${GIT_COMMIT:0:8}" \
                         --id-only \
@@ -50,7 +50,7 @@ pipeline {
         stage('Verify') {
             steps {
                 sh '''
-                    pip install --quiet snapdock-cli
+                    pip install --quiet git+https://github.com/dhrubo007a/snapdock.git#subdirectory=cli
 
                     # Wait up to 60s for the stack to be CLEAN
                     for i in $(seq 1 12); do
@@ -78,7 +78,7 @@ pipeline {
             steps {
                 unstash 'snap-id'
                 sh '''
-                    pip install --quiet snapdock-cli
+                    pip install --quiet git+https://github.com/dhrubo007a/snapdock.git#subdirectory=cli
                     SNAP_ID=$(cat .snapdock_pre_deploy_id)
                     snapdock lock "$STACK_NAME" --snapshot "$SNAP_ID"
                     echo "Locked rollback point: $SNAP_ID"
@@ -91,7 +91,7 @@ pipeline {
     post {
         failure {
             sh '''
-                pip install --quiet snapdock-cli || true
+                pip install --quiet git+https://github.com/dhrubo007a/snapdock.git#subdirectory=cli || true
                 if [ -f .snapdock_pre_deploy_id ]; then
                     SNAP_ID=$(cat .snapdock_pre_deploy_id)
                     echo "Deployment failed — restoring to snapshot: $SNAP_ID"
