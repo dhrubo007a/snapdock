@@ -37,7 +37,7 @@ from snapdock.core.volume import (
     _ensure_image,
 )
 from snapdock.events import EventBus, SnapDockEvent
-from snapdock.models.manifest import Manifest
+from snapdock.models.manifest import Manifest, ServiceManifest
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -800,12 +800,121 @@ class RestoreEngine:
                         logger.warning("Could not start %s: %s", svc_name, exc)
             return
 
+        # ── Strategy 3b: Reconstruct containers from snapshot inspect data ─── #
+        # Used for solo containers (or any stack) where Strategies 1–3 all
+        # failed because no stopped container instances exist.  Reads the
+        # ``diagnostics/inspect/<service>.json`` files saved at snapshot time
+        # and uses the Docker SDK to recreate + start each container.
+        diag_dir = Path(manifest.storage.path) / "diagnostics" / "inspect"
+        if not dry_run and diag_dir.exists():
+            reconstructed_any = False
+            for svc_name in startup_order:
+                inspect_path = diag_dir / f"{svc_name}.json"
+                if not inspect_path.exists():
+                    logger.debug(
+                        "[%s] No inspect file for '%s'; skipping reconstruction",
+                        stack_name, svc_name,
+                    )
+                    continue
+                try:
+                    inspect_data = json.loads(inspect_path.read_text(encoding="utf-8"))
+                    # Prefer the manifest image tag; fall back to inspect value
+                    svc_manifest = next(
+                        (s for s in manifest.services if s.name == svc_name), None
+                    )
+                    self._recreate_container_from_inspect(
+                        inspect_data, svc_manifest=svc_manifest
+                    )
+                    reconstructed_any = True
+                except Exception as exc:
+                    logger.warning(
+                        "[%s] Could not reconstruct container '%s' from snapshot inspect: %s",
+                        stack_name, svc_name, exc,
+                    )
+            if reconstructed_any:
+                return
+
         # ── Strategy 4: Nothing to start ─────────────────────────────── #
         logger.warning(
             "[%s] Volume data restored but no containers found to start. "
             "Run `docker compose up -d` manually to bring the stack back up.",
             stack_name,
         )
+
+    def _recreate_container_from_inspect(
+        self,
+        inspect: dict,
+        *,
+        svc_manifest: "ServiceManifest | None" = None,
+    ) -> None:
+        """Reconstruct and start a container from its ``docker inspect`` JSON.
+
+        Used as Strategy 3b when no stopped container is found but the snapshot
+        captured diagnostics/inspect data.  Prefers the image tag from the
+        service manifest (which was resolved at snapshot time) over the raw
+        inspect value, which may be a digest.
+        """
+        config = inspect.get("Config") or {}
+        hc = inspect.get("HostConfig") or {}
+        net_settings = inspect.get("NetworkSettings") or {}
+
+        # Prefer manifest image tag; inspect may hold only a sha256 digest.
+        image = (svc_manifest.image if svc_manifest else None) or config.get("Image") or inspect.get("Image", "")
+        container_name = inspect.get("Name", "").lstrip("/")
+
+        # Remove any existing stopped container that would conflict.
+        if container_name:
+            try:
+                old = self._docker.containers.get(container_name)
+                old.remove(force=True)
+                logger.debug("Removed pre-existing container %s before recreation", container_name)
+            except docker.errors.NotFound:
+                pass
+
+        # Port bindings: {"80/tcp": [{"HostIp": "0.0.0.0", "HostPort": "8080"}], ...}
+        # Keep only entries that have actual bindings (exclude exposed-only ports).
+        port_bindings = {k: v for k, v in (hc.get("PortBindings") or {}).items() if v}
+        exposed_ports = list((config.get("ExposedPorts") or {}).keys())
+
+        host_config = self._docker.api.create_host_config(
+            binds=hc.get("Binds") or [],
+            port_bindings=port_bindings or None,
+            network_mode=hc.get("NetworkMode", "bridge"),
+            restart_policy=hc.get("RestartPolicy") or {"Name": "no"},
+            cap_add=hc.get("CapAdd") or None,
+            privileged=bool(hc.get("Privileged", False)),
+        )
+
+        response = self._docker.api.create_container(
+            image=image,
+            name=container_name or None,
+            command=config.get("Cmd"),
+            entrypoint=config.get("Entrypoint"),
+            environment=config.get("Env"),
+            labels=config.get("Labels"),
+            ports=exposed_ports or None,
+            host_config=host_config,
+        )
+
+        new_container = self._docker.containers.get(response["Id"])
+
+        # Connect to any additional non-default user-defined networks.
+        default_net = hc.get("NetworkMode", "bridge")
+        for net_name, net_data in (net_settings.get("Networks") or {}).items():
+            if net_name in ("bridge", "host", "none") or net_name == default_net:
+                continue
+            try:
+                network = self._docker.networks.get(net_name)
+                aliases = (net_data or {}).get("Aliases") or []
+                network.connect(new_container, aliases=aliases)
+            except Exception as exc:
+                logger.warning(
+                    "Could not connect container %s to network %s: %s",
+                    container_name, net_name, exc,
+                )
+
+        new_container.start()
+        logger.info("Reconstructed and started container '%s' from snapshot inspect", container_name)
 
     def _teardown_dry_run(self, manifest: Manifest, restore_suffix: str) -> None:
         """Remove containers and volumes created during a dry-run restore."""
@@ -894,6 +1003,12 @@ class RestoreEngine:
                             container_ports[svc_name] = ports
                 except Exception as exc:
                     logger.debug("Could not parse compose file for ephemeral ports: %s", exc)
+
+        # Fallback: for services with no compose-derived ports, use the
+        # exposed_ports recorded in the manifest at snapshot time.
+        for svc in manifest.services:
+            if svc.name not in container_ports and svc.exposed_ports:
+                container_ports[svc.name] = [f"0:{p}" for p in svc.exposed_ports]
 
         services = {
             svc.name: {"ports": container_ports.get(svc.name, [])}

@@ -24,6 +24,7 @@ class ServiceManifest(BaseModel):
     image_digest: str | None = None
     restart_policy_original: str | None = None
     restart_policy_overridden: bool = False
+    exposed_ports: list[int] = Field(default_factory=list)
     quiesce: str | None = None          # method used, e.g. "postgresql_checkpoint"
     quiesce_outcome: str | None = None  # ok | failed | skipped
     pre_hook: str | None = None

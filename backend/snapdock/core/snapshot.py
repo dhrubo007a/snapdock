@@ -292,12 +292,18 @@ class SnapshotEngine:
             svc_name = container.labels.get(
                 "com.docker.compose.service", container.name.lstrip("/")
             )
+            exposed_ports = sorted({
+                int(p.split("/")[0])
+                for p in (container.attrs.get("Config", {}).get("ExposedPorts") or {}).keys()
+                if p.split("/")[0].isdigit()
+            })
             services.append(
                 ServiceManifest(
                     name=svc_name,
                     image=image_tag,
                     image_digest=image_digest,
                     restart_policy_original=policy_name,
+                    exposed_ports=exposed_ports,
                 )
             )
             startup_order.append(svc_name)

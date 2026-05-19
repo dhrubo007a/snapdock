@@ -367,14 +367,13 @@ class ContainerClassifier:
 # --------------------------------------------------------------------------- #
 
 def _annotate_cross_project_coupling(stacks: list[DetectedStack]) -> None:
-    """Detect cross-project coupling between compose stacks.
+    """Detect cross-project coupling between all stacks (compose, interconnected, solo).
 
-    Two compose stacks are considered coupled when any container from one stack
+    Any two stacks are considered coupled when any container from one stack
     shares a user-defined Docker network or a named volume with any container
     from the other.  Coupling information is stored in each stack's
     ``coupled_stacks`` list so the API can surface it.
     """
-    compose_stacks = [s for s in stacks if s.type == "compose"]
 
     # Pre-compute sets of user-defined networks and named volumes per stack
     def nets(s: DetectedStack) -> set[str]:
@@ -393,12 +392,11 @@ def _annotate_cross_project_coupling(stacks: list[DetectedStack]) -> None:
                     result.add(m["Name"])
         return result
 
-    net_sets = {s.name: nets(s) for s in compose_stacks}
-    vol_sets = {s.name: vols(s) for s in compose_stacks}
-    stack_by_name = {s.name: s for s in compose_stacks}
+    net_sets = {s.name: nets(s) for s in stacks}
+    vol_sets = {s.name: vols(s) for s in stacks}
 
-    for i, a in enumerate(compose_stacks):
-        for b in compose_stacks[i + 1:]:
+    for i, a in enumerate(stacks):
+        for b in stacks[i + 1:]:
             shared = (net_sets[a.name] & net_sets[b.name]) | (vol_sets[a.name] & vol_sets[b.name])
             if shared:
                 if b.name not in a.coupled_stacks:
