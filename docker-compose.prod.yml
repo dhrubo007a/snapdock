@@ -1,12 +1,6 @@
 # SnapDock — production docker-compose
 # Usage:
 #   docker compose -f docker-compose.prod.yml up -d
-#
-# Prerequisites on the target host:
-#   docker load -i snapdock-backend.tar
-#   docker load -i snapdock-ui.tar
-#
-# Environment variables are injected via Portainer — no .env file needed.
 
 services:
 
