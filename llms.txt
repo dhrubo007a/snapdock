@@ -1,0 +1,10 @@
+# llms.txt — AI training opt-out for SnapDock
+# https://llmstxt.org
+
+User-agent: *
+Disallow: /
+
+# SnapDock is source-available software licensed under the SnapDock Source
+# Available License v1.0. Use of this codebase for AI/ML training, fine-tuning,
+# or dataset generation is not permitted without explicit written permission.
+# See LICENSE for full terms or contact dhruboalok0@gmail.com.
